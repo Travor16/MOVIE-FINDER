@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Movie Finder UG – Instant Scene Discovery</title>
+  <link rel="stylesheet" href="style.css?v=10" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <header class="navbar" id="navbar">
+    <div class="nav-inner">
+      <a href="#home" class="logo">
+        <div class="logo-icon"><i class="fas fa-film"></i></div>
+        <span class="logo-text">MOVIE<span class="logo-accent">FINDER</span></span>
+      </a>
+      <nav class="nav-links" id="navLinks">
+        <a href="#home"    class="nav-link active">Home</a>
+        <a href="#about"   class="nav-link">About Us</a>
+        <a href="#finder"  class="nav-link">Finder</a>
+        <a href="#contact" class="nav-link">Contact Us</a>
+      </nav>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- HERO SLIDER — real movie backdrops -->
+  <section class="hero" id="home">
+    <div class="hero-slides" id="heroSlides">
+
+      <!-- Slide 1: The Dark Knight -->
+      <div class="slide active">
+        <div class="slide-bg" style="background-image:url('https://image.tmdb.org/t/p/original/hkBaDkMWbLaf8B1lsWsqX7an5O6.jpg')"></div>
+        <div class="slide-overlay"></div>
+        <div class="slide-content">
+          <span class="slide-label">Scene Recognition</span>
+          <h1>Find Any Movie</h1>
+          <p>Drop a screenshot or clip — our AI identifies it instantly</p>
+          <a href="#finder" class="btn-primary">Start Searching</a>
+        </div>
+      </div>
+
+      <!-- Slide 2: Avengers Endgame -->
+      <div class="slide">
+        <div class="slide-bg" style="background-image:url('https://image.tmdb.org/t/p/original/orjiB3oUIsyz60hoEqkiGpy5CeO.jpg')"></div>
+        <div class="slide-overlay"></div>
+        <div class="slide-content">
+          <span class="slide-label">Movies &amp; TV Series</span>
+          <h1>Any Scene, Any Film</h1>
+          <p>Movies, TV series, VJ versions — all found in seconds</p>
+          <a href="#finder" class="btn-primary">Try It Now</a>
+        </div>
+      </div>
+
+      <!-- Slide 3: Black Panther -->
+      <div class="slide">
+        <div class="slide-bg" style="background-image:url('https://image.tmdb.org/t/p/original/6ELJEzQJ3Y45HczvreC3dg0GV5R.jpg')"></div>
+        <div class="slide-overlay"></div>
+        <div class="slide-content">
+          <span class="slide-label">Uganda VJ Style</span>
+          <h1>Watch Your Way</h1>
+          <p>Normal version or Uganda VJ-dubbed — your choice</p>
+          <a href="#finder" class="btn-primary">Discover Now</a>
+        </div>
+      </div>
+
+      <!-- Slide 4: Interstellar -->
+      <div class="slide">
+        <div class="slide-bg" style="background-image:url('https://image.tmdb.org/t/p/original/xJHokMbljvjADYdit5fK5VQsXEG.jpg')"></div>
+        <div class="slide-overlay"></div>
+        <div class="slide-content">
+          <span class="slide-label">Global Streaming</span>
+          <h1>Find Where to Watch</h1>
+          <p>Real streaming links across Netflix, Prime, Showmax &amp; more</p>
+          <a href="#finder" class="btn-primary">Find It Now</a>
+        </div>
+      </div>
+
+    </div>
+    <button class="slide-btn prev" id="prevSlide" aria-label="Previous"><i class="fas fa-chevron-left"></i></button>
+    <button class="slide-btn next" id="nextSlide" aria-label="Next"><i class="fas fa-chevron-right"></i></button>
+    <div class="slide-dots" id="slideDots"></div>
+  </section>
+
+  <!-- FINDER TOOL -->
+  <section class="finder-section" id="finder">
+    <div class="container">
+
+      <!-- Hero search header -->
+      <div class="finder-hero">
+        <div class="finder-hero-icon"><i class="fas fa-film"></i></div>
+        <h2>Identify Any Movie or Series</h2>
+        <p>Upload a screenshot or video clip — our AI analyses the scene and finds the exact title</p>
+      </div>
+
+      <!-- Main search card -->
+      <div class="finder-card">
+
+        <!-- Two-column layout: upload left, text search right -->
+        <div class="finder-columns">
+
+          <!-- LEFT: Upload -->
+          <div class="finder-col-upload">
+            <div class="col-label"><i class="fas fa-image"></i> Upload a Scene</div>
+            <div class="upload-zone" id="uploadZone">
+              <div class="upload-inner" id="uploadInner">
+                <div class="upload-cloud"><i class="fas fa-cloud-upload-alt"></i></div>
+                <p class="upload-main">Drag &amp; drop your screenshot here</p>
+                <p class="upload-sub">JPG · PNG · WEBP · MP4 · MOV &nbsp;|&nbsp; Max 50MB</p>
+                <label class="btn-browse" for="fileInput">
+                  <i class="fas fa-folder-open"></i> Browse Files
+                </label>
+                <input type="file" id="fileInput" accept="image/*,video/*" hidden />
+              </div>
+              <div class="upload-preview hidden" id="uploadPreview">
+                <img id="previewImg" src="" alt="Preview" />
+                <video id="previewVideo" controls></video>
+                <button class="remove-btn" id="removeFile"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <!-- Identify button lives here, below the upload zone -->
+            <button class="btn-identify" id="findBtn" disabled>
+              <span class="btn-identify-icon"><i class="fas fa-search"></i></span>
+              <span class="btn-identify-text">
+                <strong>Identify This Movie</strong>
+                <small>AI-powered visual recognition</small>
+              </span>
+              <span class="btn-identify-arrow"><i class="fas fa-arrow-right"></i></span>
+            </button>
+          </div>
+
+          <!-- DIVIDER -->
+          <div class="finder-divider">
+            <span>OR</span>
+          </div>
+
+          <!-- RIGHT: Text search -->
+          <div class="finder-col-search">
+            <div class="col-label"><i class="fas fa-keyboard"></i> Search by Name</div>
+            <p class="col-desc">Know the title? Type it below and get instant results with streaming links.</p>
+            <div class="text-search-box">
+              <i class="fas fa-search text-search-icon"></i>
+              <input type="text" id="movieNameInput"
+                placeholder="Movie or series title..."
+                autocomplete="off" />
+              <button class="btn-text-search" id="nameSearchBtn">Search</button>
+            </div>
+            <div class="quick-searches">
+              <span class="quick-label">Try:</span>
+              <button class="quick-tag" onclick="quickSearch('Robin Hood')">Robin Hood</button>
+              <button class="quick-tag" onclick="quickSearch('Squid Game')">Squid Game</button>
+              <button class="quick-tag" onclick="quickSearch('Black Panther')">Black Panther</button>
+              <button class="quick-tag" onclick="quickSearch('Money Heist')">Money Heist</button>
+              <button class="quick-tag" onclick="quickSearch('Inception')">Inception</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Privacy note -->
+        <div class="finder-privacy">
+          <i class="fas fa-shield-alt"></i>
+          Your uploads are never stored or shared — processed privately and discarded immediately
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div class="loading-state hidden" id="loadingState">
+        <div class="load-inner">
+          <div class="film-loader">
+            <div class="reel"></div>
+            <div class="reel reel2"></div>
+          </div>
+          <p class="loading-text" id="loadingText">Analysing your scene<span class="dots">...</span></p>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+          <p class="load-sub">Searching millions of titles worldwide</p>
+        </div>
+      </div>
+
+      <!-- Results injected here by JS -->
+      <div class="results-section hidden" id="resultsSection"></div>
+
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section class="about-section" id="about">
+    <div class="container about-grid">
+      <div class="about-logo-box">
+        <div class="about-logo">
+          <i class="fas fa-film"></i>
+          <span>MOVIE FINDER</span>
+        </div>
+        <div class="about-glow"></div>
+      </div>
+      <div class="about-content">
+        <h2>Movie Finder</h2>
+        <h4>Instant Scene-to-Screen Discovery</h4>
+        <p>Ever seen a movie clip or screenshot on social media and wondered what it was? Movie Finder solves the mystery. Simply paste any video or image and our AI engine instantly identifies the film or TV series. We deliver full details, official trailers, and direct streaming links — including Uganda's popular VJ-dubbed versions, taking you from a random clip to full viewing in seconds.</p>
+        <a href="#finder" class="btn-red">Try It Now</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER / CONTACT -->
+  <footer class="footer" id="contact">
+    <div class="container footer-grid">
+
+      <div class="footer-contact">
+        <h3>Contact Us</h3>
+        <p class="footer-sub">Send us a Message</p>
+        <form class="contact-form" id="contactForm">
+          <input type="text"  placeholder="Full Name"   required aria-label="Full Name" />
+          <input type="email" placeholder="Your Email"  required aria-label="Your Email" />
+          <textarea placeholder="Your Message" rows="4" required aria-label="Your Message"></textarea>
+          <button type="submit" class="btn-submit">Submit</button>
+        </form>
+        <div class="form-success hidden" id="formSuccess">
+          <i class="fas fa-check-circle"></i> Message sent! We'll get back to you soon.
+        </div>
+      </div>
+
+      <div class="footer-sitemap">
+        <h3>Site Map</h3>
+        <p class="footer-sub">All our Pages</p>
+        <ul>
+          <li><a href="#home">- Home</a></li>
+          <li><a href="#about">- About Us</a></li>
+          <li><a href="#finder">- Finder</a></li>
+          <li><a href="#contact">- Contact Us</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-brand">
+        <div class="footer-logo-circle"><i class="fas fa-film"></i></div>
+        <div class="footer-contact-info">
+          <p><i class="fas fa-phone"></i> +256701918079</p>
+          <p><i class="fas fa-envelope"></i> travormicheal7@gmail.com</p>
+        </div>
+        <div class="social-links">
+          <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+          <a href="#" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+          <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+          <a href="#" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+        </div>
+      </div>
+
+    </div>
+    <div class="footer-bottom">
+      <p>Copyright 2026 All Rights Reserved — Movie Finder UG</p>
+    </div>
+  </footer>
+
+  <script src="app.js?v=10"></script>
+</body>
+</html>
