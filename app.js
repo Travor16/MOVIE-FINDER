@@ -1,5 +1,5 @@
 /* =========================================================
-   MOVIE FINDER UG
+   MOVIE FINDER UG - FRONTEND ROUTING CODE
    ========================================================= */
 
 const _F = 'https://image.tmdb.org/t/p/w500';
@@ -55,13 +55,14 @@ async function identifyWithAI(file) {
 
   let res;
   try {
-    res = await fetch('/api/identify', {
+    // UPDATED: Routes directly to your Netlify serverless execution environment
+    res = await fetch('/.netlify/functions/identify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
   } catch (e) {
-    throw new Error('Network error. Make sure you are at http://localhost:8080');
+    throw new Error('Network deployment error. Serverless endpoint is unreachable.');
   }
 
   const raw = await res.text();
@@ -138,7 +139,8 @@ function captureVideoFrame(file) {
    STEP 2 — DATABASE: search movies AND TV series
    ========================================================= */
 async function dbFetch(path) {
-  const r = await fetch('/api/tmdb?path=' + encodeURIComponent(path));
+  // UPDATED: Routes through Netlify function middleware to keep API credentials secure
+  const r = await fetch('/.netlify/functions/tmdb?path=' + encodeURIComponent(path));
   if (!r.ok) throw new Error('Search failed. Please try again.');
   return r.json();
 }
@@ -247,8 +249,8 @@ async function getTVDetails(id) {
 async function getStreamingLinks(imdbId, title) {
   try {
     const searchUrl = imdbId
-      ? '/api/watchmode/search?imdb_id=' + imdbId
-      : '/api/watchmode/search?title=' + encodeURIComponent(title);
+      ? '/.netlify/functions/watchmode?imdb_id=' + imdbId
+      : '/.netlify/functions/watchmode?title=' + encodeURIComponent(title);
 
     const sRes = await fetch(searchUrl);
     if (!sRes.ok) return [];
@@ -256,7 +258,7 @@ async function getStreamingLinks(imdbId, title) {
     const found = sData.title_results?.[0];
     if (!found) return [];
 
-    const srcRes = await fetch('/api/watchmode/sources/' + found.id);
+    const srcRes = await fetch('/.netlify/functions/watchmode?source_id=' + found.id);
     if (!srcRes.ok) return [];
     const sources = await srcRes.json();
 
