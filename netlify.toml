@@ -1,1 +1,3 @@
-[build] & echo   publish = "." & echo   functions = "netlify/functions"
+[build] 
+  publish = "." 
+  functions = "netlify/functions"
