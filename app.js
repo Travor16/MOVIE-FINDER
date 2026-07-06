@@ -1,14 +1,8 @@
-﻿/* =========================================================
+/* =========================================================
    MOVIE FINDER UG
    ========================================================= */
 
-const _A = 'AIzaSyDNfHIT6etzTeolWESVh63HsgcBKlhpc80';
-const _B = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=';
-const _C = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIxMWM3YWZhNTRmOWY5MGVkOTMzYzc0NTBlNWViYmQxMSIsIm5iZiI6MTc3Njk1MjMxNS4yLCJzdWIiOiI2OWVhMjNmYjJhMzFlYTUxMzIwYWJlN2MiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.eNHdyDtCBDbpwe0sbP2TlZFxcmJVhglflnnLwzZCfCQ';
-const _D = '4FKqGwC7oEaC2lKyJbMJ2fAPLZgPjQU6envIJxQj';
-const _E = 'https://api.themoviedb.org/3';
 const _F = 'https://image.tmdb.org/t/p/w500';
-const _G = { 'Authorization': 'Bearer ' + _C, 'accept': 'application/json' };
 
 /* ── Streaming platform logos ── */
 const PLATFORM_LOGOS = {
@@ -61,7 +55,7 @@ async function identifyWithAI(file) {
 
   let res;
   try {
-    res = await fetch(_B + _A, {
+    res = await fetch('/api/identify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -144,7 +138,7 @@ function captureVideoFrame(file) {
    STEP 2 — DATABASE: search movies AND TV series
    ========================================================= */
 async function dbFetch(path) {
-  const r = await fetch(_E + path, { headers: _G });
+  const r = await fetch('/api/tmdb?path=' + encodeURIComponent(path));
   if (!r.ok) throw new Error('Search failed. Please try again.');
   return r.json();
 }
@@ -253,8 +247,8 @@ async function getTVDetails(id) {
 async function getStreamingLinks(imdbId, title) {
   try {
     const searchUrl = imdbId
-      ? 'https://api.watchmode.com/v1/search/?apiKey=' + _D + '&search_field=imdb_id&search_value=' + imdbId
-      : 'https://api.watchmode.com/v1/search/?apiKey=' + _D + '&search_field=name&search_value=' + encodeURIComponent(title);
+      ? '/api/watchmode/search?imdb_id=' + imdbId
+      : '/api/watchmode/search?title=' + encodeURIComponent(title);
 
     const sRes = await fetch(searchUrl);
     if (!sRes.ok) return [];
@@ -262,7 +256,7 @@ async function getStreamingLinks(imdbId, title) {
     const found = sData.title_results?.[0];
     if (!found) return [];
 
-    const srcRes = await fetch('https://api.watchmode.com/v1/title/' + found.id + '/sources/?apiKey=' + _D);
+    const srcRes = await fetch('/api/watchmode/sources/' + found.id);
     if (!srcRes.ok) return [];
     const sources = await srcRes.json();
 

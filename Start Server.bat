@@ -4,7 +4,21 @@ echo   MOVIE FINDER - Starting Local Server
 echo ============================================
 echo.
 
-REM Try Python 3 first
+REM Try Node.js server first (required for environment variables and API security)
+node --version >nul 2>&1
+if %errorlevel% == 0 (
+    echo Starting Express server with Node.js...
+    echo.
+    echo Open your browser and go to:
+    echo   http://localhost:8080
+    echo.
+    echo Press Ctrl+C to stop the server.
+    echo.
+    npm start
+    goto :done
+)
+
+REM Try Python 3
 python --version >nul 2>&1
 if %errorlevel% == 0 (
     echo Starting server with Python...
