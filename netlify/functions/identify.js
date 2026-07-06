@@ -2,10 +2,11 @@ const { GoogleGenAI } = require('@google/genai');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-async function generateWithRetry(payload, retries = 3, initialDelay = 3000) {
+async function generateWithRetry(payload, retries = 3, initialDelay = 4000) {
   let delay = initialDelay;
   for (let i = 0; i < retries; i++) {
     try {
+      // Try with live Google Search active
       return await ai.models.generateContent({
         ...payload,
         config: {
@@ -18,12 +19,14 @@ async function generateWithRetry(payload, retries = 3, initialDelay = 3000) {
                           searchError.message?.includes('429') || searchError.message?.includes('Quota exceeded') ||
                           searchError.message?.includes('ResourceExhausted') || searchError.message?.includes('rate-limits');
 
+      // If it's a rate limit error, wait it out and retry
       if (isRateLimit && i < retries - 1) {
         await new Promise(resolve => setTimeout(resolve, delay));
         delay *= 2;
         continue;
       }
 
+      // If search fails or stays rate-limited, immediately fall back to pure vision knowledge
       try {
         return await ai.models.generateContent(payload);
       } catch (fallbackError) {
