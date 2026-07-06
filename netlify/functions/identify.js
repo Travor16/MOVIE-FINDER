@@ -2,50 +2,20 @@ const { GoogleGenAI } = require('@google/genai');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-async function generateWithRetry(payload, retries = 3, initialDelay = 4000) {
-  let delay = initialDelay;
-  for (let i = 0; i < retries; i++) {
-    try {
-      // Try with live Google Search active
-      return await ai.models.generateContent({
-        ...payload,
-        config: {
-          tools: [{ googleSearch: {} }],
-          ...payload.config
-        }
-      });
-    } catch (searchError) {
-      const isRateLimit = searchError.status === 429 || searchError.statusCode === 429 ||
-                          searchError.message?.includes('429') || searchError.message?.includes('Quota exceeded') ||
-                          searchError.message?.includes('ResourceExhausted') || searchError.message?.includes('rate-limits');
-
-      // If it's a rate limit error, wait it out and retry
-      if (isRateLimit && i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2;
-        continue;
-      }
-
-      // If search fails or stays rate-limited, immediately fall back to pure vision knowledge
-      try {
-        return await ai.models.generateContent(payload);
-      } catch (fallbackError) {
-        const isFallbackRateLimit = fallbackError.status === 429 || fallbackError.statusCode === 429 ||
-                                    fallbackError.message?.includes('429') || fallbackError.message?.includes('Quota exceeded') ||
-                                    fallbackError.message?.includes('ResourceExhausted') || fallbackError.message?.includes('rate-limits');
-
-        if (isFallbackRateLimit && i < retries - 1) {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2;
-          continue;
-        }
-        throw fallbackError;
-      }
-    }
-  }
-}
-
 exports.handler = async (event, context) => {
+  // Handle CORS preflight requests
+  if (event.httpMethod === "OPTIONS") {
+    return {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "POST, OPTIONS"
+      },
+      body: ""
+    };
+  }
+
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: JSON.stringify({ error: "Method Not Allowed" }) };
   }
@@ -57,10 +27,14 @@ exports.handler = async (event, context) => {
     const imagePart = parts.find(p => p.inline_data);
 
     if (!textPart || !imagePart) {
-      return { statusCode: 400, body: JSON.stringify({ error: { message: "Invalid payload structure" } }) };
+      return { 
+        statusCode: 400, 
+        body: JSON.stringify({ error: { message: "Invalid request payload structure" } }) 
+      };
     }
 
-    const payload = {
+    // Direct, high-speed vision generation to bypass search grounding quota limits completely
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
         {
@@ -75,9 +49,7 @@ exports.handler = async (event, context) => {
         temperature: reqBody.generationConfig?.temperature ?? 0.1,
         maxOutputTokens: reqBody.generationConfig?.maxOutputTokens ?? 300
       }
-    };
-
-    const response = await generateWithRetry(payload);
+    });
 
     return {
       statusCode: 200,
@@ -101,13 +73,14 @@ exports.handler = async (event, context) => {
       })
     };
   } catch (error) {
-    let userFriendlyMessage = error.message;
-    if (error.status === 429 || error.message?.includes('Quota exceeded')) {
-      userFriendlyMessage = 'The server is currently busy. Please wait a few seconds and try again.';
-    }
+    console.error('Identity core execution error:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: { message: userFriendlyMessage } })
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type"
+      },
+      body: JSON.stringify({ error: { message: error.message || "Internal Analysis Error" } })
     };
   }
 };
