@@ -3,7 +3,7 @@ const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 exports.handler = async (event, context) => {
-  // Handle CORS preflight requests
+  // Handle CORS preflight requests cleanly
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
@@ -29,11 +29,11 @@ exports.handler = async (event, context) => {
     if (!textPart || !imagePart) {
       return { 
         statusCode: 400, 
-        body: JSON.stringify({ error: { message: "Invalid request payload structure" } }) 
+        body: JSON.stringify({ error: { message: "Invalid request payload structure." } }) 
       };
     }
 
-    // Direct, high-speed vision generation to bypass search grounding quota limits completely
+    // Direct vision analysis
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
@@ -73,14 +73,28 @@ exports.handler = async (event, context) => {
       })
     };
   } catch (error) {
-    console.error('Identity core execution error:', error);
+    // Log the true error to your internal Netlify console so you can audit it privately
+    console.error('Core backend execution failure:', error);
+
+    // Hardened Error Firewall: Determine the error nature without leaking text strings
+    let clientMessage = "Scene analysis failed. Please try again with a different screenshot.";
+    
+    const errorStr = (error.message || "").toLowerCase();
+    if (error.status === 429 || errorStr.includes("429") || errorStr.includes("quota") || errorStr.includes("exhausted")) {
+      clientMessage = "Our verification channels are currently packed with traffic! Please wait a few seconds and try again.";
+    }
+
     return {
       statusCode: 500,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type"
       },
-      body: JSON.stringify({ error: { message: error.message || "Internal Analysis Error" } })
+      body: JSON.stringify({ 
+        error: { 
+          message: clientMessage 
+        } 
+      })
     };
   }
 };
