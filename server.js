@@ -64,7 +64,7 @@ async function generateWithRetry(payload, retries = 3, initialDelay = 3000) {
   }
 }
 
-// Gemini SDK Call
+// Gemini SDK Call - FIXED FOR PRECISE STRUCTURAL TEXT EXTRACTION
 app.post('/api/identify', async (req, res) => {
   try {
     const parts = req.body.contents?.[0]?.parts || [];
@@ -75,6 +75,26 @@ app.post('/api/identify', async (req, res) => {
       return res.status(400).json({ error: { message: 'Invalid request payload structure' } });
     }
     
+    // Rigid JSON Schema forcing Gemini to cleanly isolate structural variables
+    const jsonSchema = {
+      type: "OBJECT",
+      properties: {
+        searchQuery: { 
+          type: "STRING", 
+          description: "The cleanest possible official title name of the movie or TV show, entirely stripped of conversational elements (e.g., 'Interstellar')" 
+        },
+        releaseYear: { 
+          type: "STRING", 
+          description: "The official 4-digit release year of the media asset" 
+        },
+        mediaType: { 
+          type: "STRING", 
+          description: "Must be exactly 'movie' or 'tv'" 
+        }
+      },
+      required: ["searchQuery", "releaseYear", "mediaType"]
+    };
+
     const payload = {
       model: "gemini-2.5-flash",
       contents: [
@@ -84,16 +104,18 @@ app.post('/api/identify', async (req, res) => {
             data: imagePart.inline_data.data
           }
         },
-        textPart.text
+        "Identify the movie or TV show from this visual frame using Google Search Grounding to double-check accuracy. You must strictly output your response as a valid JSON object containing 'searchQuery', 'releaseYear', and 'mediaType' values."
       ],
       config: {
-        temperature: req.body.generationConfig?.temperature ?? 0.1,
-        maxOutputTokens: req.body.generationConfig?.maxOutputTokens ?? 300
+        temperature: 0.1, // Locked down low to enforce raw factual precision
+        responseMimeType: "application/json",
+        responseSchema: jsonSchema
       }
     };
 
     const response = await generateWithRetry(payload);
 
+    // Return structured text block safely back to front-end handler
     res.json({
       candidates: [
         {
@@ -109,7 +131,6 @@ app.post('/api/identify', async (req, res) => {
     });
   } catch (error) {
     console.error('Gemini SDK error after retries:', error);
-    // Provide a friendly error message if they ultimately exceed limits
     let userFriendlyMessage = error.message;
     if (error.status === 429 || error.message?.includes('Quota exceeded') || error.message?.includes('rate-limits')) {
       userFriendlyMessage = 'The server is currently busy due to a high rate of searches. Please wait 10 seconds and try again.';
