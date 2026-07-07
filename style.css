@@ -486,3 +486,31 @@ img, video { max-width: 100%; display: block; }
   .finder-hero h2 { font-size: 1.6rem; }
   .similar-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* --- Core Mobile Responsiveness Fixes --- */
+@media (max-width: 768px) {
+  /* 1. Shrink hero title text and fix overlaps */
+  h1, .hero-title, .hero-section h1 { 
+    font-size: 1.8rem !important; 
+    line-height: 1.2 !important;
+    text-align: center !important;
+  }
+
+  /* 2. Scale down and separate the carousel navigation arrows */
+  .slider-arrow-left, 
+  .slider-arrow-right,
+  .carousel-control-prev,
+  .carousel-control-next {
+    width: 38px !important;   
+    height: 38px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+  }
+
+  /* 3. Add breathing padding so content doesn't hit the screen edges */
+  .main-container, .upload-box-wrapper, .container {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    box-sizing: border-box !important;
+  }
+}
