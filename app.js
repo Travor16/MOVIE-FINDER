@@ -20,16 +20,6 @@ const PLATFORM_LOGOS = {
   'Paramount+':   'https://upload.wikimedia.org/wikipedia/commons/a/a5/Paramount_Plus.svg',
 };
 
-/* ── VJ platforms for Uganda ── */
-const VJ_PLATFORMS = [
-  { name: 'Best Movies UG',  logo: 'https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg', url: 'https://play.google.com/store/search?q=', suffix: '+best+movies+ug', region: 'Uganda' },
-  { name: 'YouTube VJ',      logo: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/YouTube_Logo_2017.svg',          url: 'https://www.youtube.com/results?search_query=', suffix: '+vj+narrator+uganda', region: 'Uganda / EA' },
-  { name: 'Telegram VJ',     logo: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg',             url: 'https://www.google.com/search?q=telegram+', suffix: '+vj+movie+uganda', region: 'East Africa' },
-  { name: 'Ronnie VJ',       logo: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg',             url: 'https://t.me/s/ronnie_vj_movie_', suffix: '', region: 'Uganda' },
-  { name: 'WhatsApp Groups', logo: 'https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg',                  url: 'https://www.google.com/search?q=whatsapp+', suffix: '+vj+movie+group+uganda', region: 'Uganda' },
-  { name: 'TikTok VJ Clips', logo: 'https://upload.wikimedia.org/wikipedia/en/a/a9/TikTok_logo.svg',                   url: 'https://www.tiktok.com/search?q=', suffix: '+vj+uganda', region: 'Uganda' },
-];
-
 /* =========================================================
    STEP 1 — AI VISION: identify title from image/video frame
    ========================================================= */
@@ -55,7 +45,6 @@ async function identifyWithAI(file) {
 
   let res;
   try {
-    // UPDATED: Routes directly to your Netlify serverless execution environment
     res = await fetch('/.netlify/functions/identify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -139,7 +128,6 @@ function captureVideoFrame(file) {
    STEP 2 — DATABASE: search movies AND TV series
    ========================================================= */
 async function dbFetch(path) {
-  // UPDATED: Routes through Netlify function middleware to keep API credentials secure
   const r = await fetch('/.netlify/functions/tmdb?path=' + encodeURIComponent(path));
   if (!r.ok) throw new Error('Search failed. Please try again.');
   return r.json();
@@ -198,7 +186,12 @@ async function getMovieDetails(id) {
     dbFetch('/movie/' + id + '/videos?language=en-US'),
     dbFetch('/movie/' + id + '/credits?language=en-US'),
   ]);
-  const trailer  = (videos.results || []).find(v => v.type === 'Trailer' && v.site === 'YouTube') || (videos.results || []).find(v => v.site === 'YouTube');
+  
+  const videoList = videos.results || [];
+  let trailer = videoList.find(v => v.type === 'Trailer' && v.site === 'YouTube' && (v.name || '').toLowerCase().includes('official'));
+  if (!trailer) trailer = videoList.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+  if (!trailer) trailer = videoList.find(v => v.site === 'YouTube');
+
   const director = (credits.crew   || []).find(c => c.job === 'Director');
   const cast     = (credits.cast   || []).slice(0, 6).map(a => a.name).join(', ');
   return {
@@ -222,7 +215,12 @@ async function getTVDetails(id) {
     dbFetch('/tv/' + id + '/videos?language=en-US'),
     dbFetch('/tv/' + id + '/credits?language=en-US'),
   ]);
-  const trailer  = (videos.results || []).find(v => v.type === 'Trailer' && v.site === 'YouTube') || (videos.results || []).find(v => v.site === 'YouTube');
+  
+  const videoList = videos.results || [];
+  let trailer = videoList.find(v => v.type === 'Trailer' && v.site === 'YouTube' && (v.name || '').toLowerCase().includes('official'));
+  if (!trailer) trailer = videoList.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+  if (!trailer) trailer = videoList.find(v => v.site === 'YouTube');
+
   const creators = (detail.created_by || []).map(c => c.name).join(', ') || 'N/A';
   const cast     = (credits.cast || []).slice(0, 6).map(a => a.name).join(', ');
   let imdbId = '';
@@ -468,22 +466,19 @@ function showResults({ media, sources, aiResult, similar }) {
         '<div class="trailer-frame">' +
           '<iframe src="https://www.youtube.com/embed/' + media.trailerKey + '?rel=0&modestbranding=1" allowfullscreen title="Trailer" loading="lazy"></iframe>' +
         '</div>' +
-      '</div>'
+        '<div style="text-align: center; margin-top: 10px;">' +
+          '<a href="https://www.youtube.com/watch?v=' + media.trailerKey + '" target="_blank" rel="noopener" style="color: #ff4a4a; text-decoration: none; font-size: 14px; font-weight: bold;">' +
+            '🍿 Video blocked or blank? Watch it directly on YouTube ↗' +
+          '</a>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '</div>'
     : '') +
 
     '<div class="streaming-section">' +
       '<h3><i class="fas fa-globe"></i> Where to Watch</h3>' +
-      '<div class="streaming-tabs">' +
-        '<button class="stream-tab active" data-tab="normal">Normal Version</button>' +
-        '<button class="stream-tab" data-tab="vj">&#127482;&#127468; VJ Uganda Style</button>' +
-      '</div>' +
       '<div class="stream-tab-content active" id="sTab-normal">' + buildNormalGrid(sources, media.title) + '</div>' +
-      '<div class="stream-tab-content" id="sTab-vj">' +
-        '<div class="vj-notice"><i class="fas fa-microphone"></i>' +
-          '<p>VJ (Video Joker) versions have a Ugandan narrator dubbed over the film. Search the links below for <strong>"' + media.title + ' VJ"</strong>.</p>' +
-        '</div>' +
-        buildVJGrid(media.title) +
-      '</div>' +
     '</div>' +
 
     '<button class="btn-reset" onclick="window.clearUpload()"><i class="fas fa-redo"></i> Search Another</button>';
@@ -505,16 +500,6 @@ function showResults({ media, sources, aiResult, similar }) {
         '<div class="similar-grid">' + cards + '</div>' +
       '</div>';
   }
-
-  /* Wire tabs */
-  section.querySelectorAll('.stream-tab').forEach(tab => {
-    tab.onclick = () => {
-      section.querySelectorAll('.stream-tab').forEach(t => t.classList.remove('active'));
-      section.querySelectorAll('.stream-tab-content').forEach(c => c.classList.remove('active'));
-      tab.classList.add('active');
-      section.querySelector('#sTab-' + tab.dataset.tab).classList.add('active');
-    };
-  });
 
   section.classList.remove('hidden');
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -554,20 +539,6 @@ function buildNormalGrid(sources, fallbackTitle) {
     '</a></div>'
   ).join('');
   return '<p class="no-watchmode-note"><i class="fas fa-info-circle"></i> Searching these platforms directly:</p><div class="streaming-grid">' + cards + '</div>';
-}
-
-function buildVJGrid(title) {
-  const enc = encodeURIComponent(title);
-  const cards = VJ_PLATFORMS.map(p =>
-    '<div class="stream-card vj-card"><a href="' + p.url + enc + p.suffix + '" target="_blank" rel="noopener">' +
-    '<div class="stream-logo-wrap"><img src="' + p.logo + '" alt="' + p.name + '" onerror="this.style.display=\'none\'"/></div>' +
-    '<div class="stream-platform-name">' + p.name + '</div>' +
-    '<div class="stream-region">' + p.region + '</div>' +
-    '<div class="stream-type">VJ Narrated</div>' +
-    '<div class="stream-watch-btn">Find VJ <i class="fas fa-microphone"></i></div>' +
-    '</a></div>'
-  ).join('');
-  return '<div class="streaming-grid">' + cards + '</div>';
 }
 
 /* =========================================================
