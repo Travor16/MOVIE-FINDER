@@ -45,7 +45,7 @@ async function identifyWithAI(file) {
 
   let res;
   try {
-    res = await fetch('/.netlify/functions/identify', {
+    res = await fetch('/api/identify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
