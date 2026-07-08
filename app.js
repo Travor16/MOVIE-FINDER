@@ -24,25 +24,25 @@ const PLATFORM_LOGOS = {
    STEP 1 — AI VISION: identify title from image/video frame
    ========================================================= */
 async function identifyWithAI(file) {
-  const base64 = await fileToBase64(file);
+    const base64 = await fileToBase64(file);
+    const mimeType = file.type || 'image/jpeg';
 
-  const prompt = 'You are a movie and TV series identification expert. Look at this image carefully.\n\n' +
-    'Identify the exact movie OR TV series this scene is from.\n\n' +
-    'Look for: actor faces, costumes, props, setting, any on-screen text, subtitles, watermarks, logos, cinematography style.\n\n' +
-    'Reply in this EXACT format only:\n' +
-    'TITLE: [exact title]\n' +
-    'YEAR: [year]\n' +
-    'TYPE: [MOVIE or SERIES]\n' +
-    'CONFIDENCE: [HIGH or MEDIUM or LOW]\n' +
-    'REASON: [one sentence of visual evidence]\n\n' +
-    'If you cannot identify it:\n' +
-    'TITLE: UNKNOWN\nYEAR: UNKNOWN\nTYPE: UNKNOWN\nCONFIDENCE: LOW\nREASON: [what you see]';
+    const response = await fetch('/api/identify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            imageBuffer: base64, 
+            mimeType: mimeType 
+        })
+    });
 
-  const body = {
-    contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: base64 } }] }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
-  };
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Identification failed');
+    }
 
+    return await response.json();
+}
   let res;
   try {
     res = await fetch('/api/identify', {
@@ -71,7 +71,7 @@ async function identifyWithAI(file) {
     confidence: 'HIGH', 
     reason:     'Identified via live Google Search verification engine.'
   };
-}
+
 
 /* Convert file to compressed base64 JPEG */
 function fileToBase64(file) {
