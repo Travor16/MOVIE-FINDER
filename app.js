@@ -23,61 +23,100 @@ const PLATFORM_LOGOS = {
 /* =========================================================
    STEP 1 - AI VISION: identify title from image/video frame
    ========================================================= */
-async function identifyWithAI(file) {
-  const mimeType = 'image/jpeg';
-  const descriptionEl = document.getElementById('sceneDescInput');
-  const description = descriptionEl ? descriptionEl.value.trim() : '';
 
+/* Low-level call to /api/identify. `correction`, when passed, tells the
+   server "your last guess was wrong, here's why" so it can re-examine the
+   same frames instead of repeating the same mistake. Returns null (not an
+   error) when the AI says UNKNOWN, so callers can decide what to do next. */
+async function callIdentifyAPI(frames, mimeType, correction, hint) {
+  let res;
+  try {
+    res = await fetch('/api/identify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frames, mimeType, correction, hint: hint || undefined })
+    });
+  } catch (e) {
+    throw new Error('Network error. Server is unreachable.');
+  }
+
+  const raw = await res.text();
+  let data = {};
+  try { data = JSON.parse(raw); } catch (e) {}
+
+  if (!res.ok) {
+    // Server already returns a calm, user-safe message (see
+    // friendlyUpstreamError in server.js) — no need for a scary
+    // "Scene analysis failed:" technical prefix on top of it.
+    throw new Error(data.error || 'We had trouble analysing that scene. Please try again.');
+  }
+
+  const title = data.title || data.searchQuery;
+  if (!title || title.toUpperCase() === 'UNKNOWN') return null;
+
+  const year = data.year || data.releaseYear;
+  const type = data.type || (data.mediaType === 'tv' ? 'SERIES' : 'MOVIE');
+  return { title, year: year || 'UNKNOWN', type: type || 'MOVIE', confidence: data.confidence || 'HIGH', reason: data.reason || 'Identified via AI vision.' };
+}
+
+async function identifyWithAI(file, onProgress, hint) {
+  const mimeType = 'image/jpeg';
   let frames = [];
   if (file.type.startsWith('video/')) {
+    if (onProgress) onProgress('Grabbing the clearest frames from your clip');
     frames = await captureMultipleFrames(file);
   } else {
     frames = [await fileToBase64(file)];
   }
 
-  // Try all frames, return first confident result
-  let lastError = '';
-  for (let i = 0; i < frames.length; i++) {
-    let res;
-    try {
-      res = await fetch('/api/identify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBuffer: frames[i], mimeType, description })
-      });
-    } catch (e) {
-      throw new Error('Network error. Server is unreachable.');
-    }
-
-    const raw = await res.text();
-    if (!res.ok) {
-      let msg = 'Error ' + res.status;
-      try { msg = JSON.parse(raw).error || msg; } catch(e) {}
-      lastError = msg;
-      if (i < frames.length - 1) { console.log('Frame ' + (i+1) + ' failed, trying next...'); continue; }
-      throw new Error('Scene analysis failed: ' + lastError);
-    }
-
-    const data = JSON.parse(raw);
-    const title = data.title || data.searchQuery;
-    const year  = data.year  || data.releaseYear;
-    const type  = data.type  || (data.mediaType === 'tv' ? 'SERIES' : 'MOVIE');
-
-    if (title && title.toUpperCase() !== 'UNKNOWN') {
-      console.log('Identified on frame ' + (i+1) + ':', title);
-      return {
-        title,
-        year:       year  || 'UNKNOWN',
-        type:       type  || 'MOVIE',
-        confidence: data.confidence || 'HIGH',
-        reason:     data.reason || 'Identified via Gemini AI with Google Search.'
-      };
-    }
-    // Not confident — try next frame
-    if (i < frames.length - 1) { console.log('Frame ' + (i+1) + ' returned unknown, trying next frame...'); }
+  if (!frames.length) {
+    throw new Error('We could not read any frames from that file. Try a clearer screenshot or clip.');
   }
 
-  throw new Error('We could not identify this scene. Try a clearer screenshot or use the text search below.');
+  // Send every candidate frame together in ONE request so the model can
+  // cross-reference them (much faster than looping frame-by-frame, and
+  // more accurate since a blurry frame can be corroborated by a sharp one).
+  if (onProgress) onProgress(frames.length > 1 ? 'Asking the AI to compare ' + frames.length + ' frames' : 'Asking the AI to identify the scene');
+
+  const result = await callIdentifyAPI(frames, mimeType, undefined, hint);
+  if (!result) {
+    // Give a different message when the user already typed a description —
+    // repeating the exact same "add a description" prompt after they just
+    // did that reads as if we ignored what they typed.
+    if (hint && hint.trim()) {
+      throw new Error('Even with your description, we still could not pin down this exact title — it may be too rare or the scene too generic to recognise. Try the text search below if you know (or can guess) the name.');
+    }
+    throw new Error('We could not identify this scene. Try a clearer screenshot, a different moment in the clip, add a short description of what you saw, or use the text search below.');
+  }
+  return { ...result, _frames: frames, _mimeType: mimeType, _hint: hint };
+}
+
+/* Pull out likely proper-name mentions ("Idris Elba", "Gabrielle Union")
+   from the AI's REASON text, so we can cross-check them against the real
+   cast list once we know the actual title. Heuristic, but good enough to
+   catch "right actors, wrong movie" mix-ups. */
+function extractMentionedNames(text) {
+  if (!text) return [];
+  const STOP = new Set(['High Confidence', 'Low Confidence', 'Medium Confidence']);
+  const matches = text.match(/\b[A-Z][a-zA-Z'’-]+(?:\s+[A-Z][a-zA-Z'’-]+){1,2}\b/g) || [];
+  const seen = new Set();
+  return matches.filter(m => {
+    if (STOP.has(m) || seen.has(m)) return false;
+    seen.add(m);
+    return true;
+  });
+}
+
+/* Does the AI's stated cast overlap with the real cast list we just
+   fetched from TMDB? Compares by surname to tolerate first-name-only or
+   slightly different formatting. */
+function castOverlaps(mentionedNames, castList) {
+  if (!mentionedNames.length || !castList || !castList.length) return true; // nothing to check against
+  const castSurnames = castList.map(n => n.trim().split(/\s+/).pop().toLowerCase());
+  return mentionedNames.some(name => {
+    const surname = name.trim().split(/\s+/).pop().toLowerCase();
+    return castSurnames.includes(surname);
+  });
 }
 
 /* Convert file to compressed base64 JPEG */
@@ -108,66 +147,108 @@ function captureVideoFrame(file) {
   return captureMultipleFrames(file).then(frames => frames[0]);
 }
 
+/* How many timestamps to sample across the clip, and how many of the
+   best-looking ones to actually send to the AI. Sampling more than we send
+   lets us throw away black/blurry/transition frames without missing the
+   good ones. */
+const FRAME_SAMPLE_COUNT = 10;
+const FRAME_SEND_COUNT   = 6;
+
+/* Score a frame for "how identifiable is this likely to be" using real
+   pixel statistics (brightness + contrast) instead of just JPEG byte size.
+   A frame that's solid black, solid white, or very low-contrast (fades,
+   transitions, logo cards) scores low; a well-lit, detailed frame scores
+   high. This is a much better proxy than compressed size alone. */
+function scoreFrame(ctx, w, h) {
+  const { data } = ctx.getImageData(0, 0, w, h);
+  const sampleStep = 4 * 17; // sample ~1/17th of pixels for speed
+  let sum = 0, sumSq = 0, count = 0;
+  for (let i = 0; i < data.length; i += sampleStep) {
+    const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    sum += lum; sumSq += lum * lum; count++;
+  }
+  const mean = sum / count;
+  const variance = sumSq / count - mean * mean; // contrast proxy
+  // Penalize near-black / near-white frames heavily, reward contrast.
+  const exposurePenalty = (mean < 25 || mean > 235) ? 0.15 : 1;
+  return variance * exposurePenalty;
+}
+
 function captureMultipleFrames(file) {
-  // Capture frames at multiple timestamps and return all of them
+  // Capture frames at multiple timestamps, score each one, and return the
+  // best-looking subset (most detail / contrast), most promising first.
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     const url = URL.createObjectURL(file);
     video.src = url;
     video.muted = true;
+    video.playsInline = true;
     video.preload = 'auto';
 
     const MAX = 1024;
-    const timestamps = [0.2, 0.35, 0.5, 0.65, 0.8];
-    const frames = [];
+    const timestamps = Array.from({ length: FRAME_SAMPLE_COUNT }, (_, i) =>
+      (i + 1) / (FRAME_SAMPLE_COUNT + 1)
+    ); // evenly spaced, avoiding the very first/last instant (titles/black)
+    const candidates = [];
     let idx = 0;
+    let settled = false;
+
+    function finish() {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      candidates.sort((a, b) => b.score - a.score);
+      const best = candidates.slice(0, FRAME_SEND_COUNT).map(c => c.data);
+      resolve(best.length ? best : candidates.map(c => c.data));
+    }
 
     function captureAt(t) {
-      video.currentTime = t * video.duration;
+      const target = Math.min(t * video.duration, Math.max(video.duration - 0.05, 0));
+      video.currentTime = target;
     }
 
     video.addEventListener('loadedmetadata', () => {
+      if (!video.duration || !isFinite(video.duration)) {
+        reject(new Error('Could not read video duration.'));
+        return;
+      }
       captureAt(timestamps[idx]);
     });
 
     video.addEventListener('seeked', () => {
       const canvas = document.createElement('canvas');
       let w = video.videoWidth, h = video.videoHeight;
+      if (!w || !h) { advance(); return; }
       if (w > MAX || h > MAX) {
         if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
         else       { w = Math.round(w * MAX / h); h = MAX; }
       }
       canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(video, 0, 0, w, h);
-      const frameData = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-      // Only keep frames with enough content (> 40KB decoded = not blank/dark)
-      if (frameData.length * 0.75 > 40000) {
-        frames.push(frameData);
-      }
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, w, h);
+      const score = scoreFrame(ctx, w, h);
+      const data = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      candidates.push({ data, score });
+      advance();
+    });
+
+    function advance() {
       idx++;
       if (idx < timestamps.length) {
         captureAt(timestamps[idx]);
       } else {
-        URL.revokeObjectURL(url);
-        // If all frames were too dark, just use the largest one anyway
-        if (frames.length === 0) {
-          // Re-capture at 0.5 with no size filter
-          video.currentTime = 0.5 * video.duration;
-          video.addEventListener('seeked', () => {
-            canvas.getContext('2d').drawImage(video, 0, 0, w, h);
-            frames.push(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
-            frames.sort((a, b) => b.length - a.length);
-            resolve(frames);
-          }, { once: true });
-          return;
-        }
-        // Sort by size descending — most detail first
-        frames.sort((a, b) => b.length - a.length);
-        resolve(frames);
+        finish();
       }
+    }
+
+    video.addEventListener('error', () => {
+      if (candidates.length) finish();
+      else reject(new Error('This video format could not be read by the browser.'));
     });
 
-    video.addEventListener('error', reject);
+    // Safety net: some codecs/files never fire 'seeked' reliably — don't
+    // let the user wait forever, fall back to whatever we captured so far.
+    setTimeout(() => finish(), 12000);
   });
 }
 
@@ -258,7 +339,8 @@ async function getMovieDetails(id) {
   if (!trailer) trailer = videoList.find(v => v.type === 'Trailer' && v.site === 'YouTube');
   if (!trailer) trailer = videoList.find(v => v.site === 'YouTube');
   const director = (credits.crew || []).find(c => c.job === 'Director');
-  const cast     = (credits.cast || []).slice(0, 6).map(a => a.name).join(', ');
+  const castList = (credits.cast || []).slice(0, 12).map(a => a.name);
+  const cast     = castList.slice(0, 6).join(', ');
   return {
     id: detail.id, imdbId: detail.imdb_id || '',
     title: detail.title, mediaType: 'Movie',
@@ -269,7 +351,7 @@ async function getMovieDetails(id) {
     poster: detail.poster_path ? _F + detail.poster_path : '',
     rating: detail.vote_average ? ('&#11088; ' + detail.vote_average.toFixed(1) + '/10  (' + (detail.vote_count || 0).toLocaleString() + ' votes)') : '',
     trailerKey: trailer ? trailer.key : '',
-    director: director ? director.name : 'N/A', cast: cast || 'N/A',
+    director: director ? director.name : 'N/A', cast: cast || 'N/A', castList,
     seasons: null, episodes: null,
   };
 }
@@ -285,7 +367,8 @@ async function getTVDetails(id) {
   if (!trailer) trailer = videoList.find(v => v.type === 'Trailer' && v.site === 'YouTube');
   if (!trailer) trailer = videoList.find(v => v.site === 'YouTube');
   const creators = (detail.created_by || []).map(c => c.name).join(', ') || 'N/A';
-  const cast     = (credits.cast || []).slice(0, 6).map(a => a.name).join(', ');
+  const castList = (credits.cast || []).slice(0, 12).map(a => a.name);
+  const cast     = castList.slice(0, 6).join(', ');
   let imdbId = '';
   try { const ext = await dbFetch('/tv/' + id + '/external_ids'); imdbId = ext.imdb_id || ''; } catch(e) {}
   return {
@@ -298,7 +381,7 @@ async function getTVDetails(id) {
     poster: detail.poster_path ? _F + detail.poster_path : '',
     rating: detail.vote_average ? ('&#11088; ' + detail.vote_average.toFixed(1) + '/10  (' + (detail.vote_count || 0).toLocaleString() + ' votes)') : '',
     trailerKey: trailer ? trailer.key : '',
-    director: creators, cast: cast || 'N/A',
+    director: creators, cast: cast || 'N/A', castList,
     seasons: detail.number_of_seasons || null,
     episodes: detail.number_of_episodes || null,
   };
@@ -353,16 +436,40 @@ async function getSimilar(id, mediaType) {
 /* =========================================================
    MAIN ORCHESTRATOR
    ========================================================= */
-async function runFullSearch(file) {
+async function runFullSearch(file, hint) {
   setStep(1, 'Analysing your scene');
   animateProgress(0, 30, 1200);
-  const aiResult = await identifyWithAI(file);
+  let aiResult = await identifyWithAI(file, (msg) => setStep(1, msg), hint);
   if (!aiResult.title || aiResult.title === 'UNKNOWN') {
     throw new Error('We could not identify this scene. Try a clearer screenshot or use the text search below.');
   }
   setStep(2, 'Found: "' + aiResult.title + '" — loading details');
   animateProgress(30, 65, 800);
-  const media = await searchDatabase(aiResult.title, aiResult.year, aiResult.type);
+  let media = await searchDatabase(aiResult.title, aiResult.year, aiResult.type);
+
+  // Cross-check: if the AI's REASON named actors, do they actually appear
+  // in this title's cast? Catches "right actors, wrong movie" mix-ups
+  // (e.g. two actors who co-starred in more than one film together).
+  if (media) {
+    const mentioned = extractMentionedNames(aiResult.reason);
+    if (mentioned.length && !castOverlaps(mentioned, media.castList)) {
+      setStep(2, 'Double-checking cast — first guess looked off');
+      const corrected = await callIdentifyAPI(aiResult._frames, aiResult._mimeType, {
+        rejectedTitle: aiResult.title,
+        actualCast: media.cast,
+        mentionedActors: mentioned.join(', ')
+      }, aiResult._hint).catch(() => null);
+
+      if (corrected && corrected.title.toLowerCase() !== aiResult.title.toLowerCase()) {
+        const correctedMedia = await searchDatabase(corrected.title, corrected.year, corrected.type).catch(() => null);
+        if (correctedMedia) {
+          aiResult = { ...corrected, _frames: aiResult._frames, _mimeType: aiResult._mimeType, _hint: aiResult._hint };
+          media = correctedMedia;
+        }
+      }
+    }
+  }
+
   if (!media) {
     showError('Identified as "' + aiResult.title + '" but could not load details. Try searching by name below.');
     document.getElementById('movieNameInput').value = aiResult.title;
@@ -397,12 +504,14 @@ async function runNameSearch(query) {
    ========================================================= */
 document.getElementById('findBtn').addEventListener('click', async () => {
   if (!window._file) return;
+  const hintEl = document.getElementById('hintInput');
+  const hint = hintEl ? hintEl.value.trim() : '';
   showLoading();
   try {
-    const result = await runFullSearch(window._file);
+    const result = await runFullSearch(window._file, hint);
     if (result) showResults(result);
   }
-  catch (err) { showError(err.message); }
+  catch (err) { showError(err.message, !!hint); }
 });
 
 document.getElementById('nameSearchBtn').addEventListener('click', async () => {
@@ -443,23 +552,17 @@ window.quickSearch = function(title) {
     } else {
       pVid.src = url; pVid.classList.remove('hidden'); pImg.classList.add('hidden');
     }
-    const descPanel = document.getElementById('sceneDescPanel');
-    if (descPanel) descPanel.classList.remove('hidden');
     fb.disabled = false; window._file = file;
   };
 
   window.clearUpload = function() {
     prev.classList.add('hidden'); inner.classList.remove('hidden');
     pImg.src = ''; pVid.src = ''; inp.value = '';
-    const descPanel = document.getElementById('sceneDescPanel');
-    if (descPanel) {
-      descPanel.classList.add('hidden');
-      const descInput = document.getElementById('sceneDescInput');
-      if (descInput) descInput.value = '';
-    }
     fb.disabled = true; window._file = null;
     document.getElementById('resultsSection').classList.add('hidden');
     document.getElementById('loadingState').classList.add('hidden');
+    const hintInput = document.getElementById('hintInput');
+    if (hintInput) hintInput.value = '';
   };
 
   inp.onchange = e => { if (e.target.files[0]) window.showPreview(e.target.files[0]); };
@@ -472,6 +575,40 @@ window.quickSearch = function(title) {
     if (f && (f.type.startsWith('image/') || f.type.startsWith('video/'))) window.showPreview(f);
   });
 })();
+
+/* =========================================================
+   OPTIONAL "DESCRIBE WHAT YOU SAW" PANEL
+   ========================================================= */
+(function initHintPanel() {
+  const toggle = document.getElementById('hintToggle');
+  const body   = document.getElementById('hintBody');
+  if (!toggle || !body) return;
+
+  toggle.addEventListener('click', () => {
+    body.classList.toggle('hidden');
+    toggle.classList.toggle('open');
+  });
+
+  // Opens (and doesn't close) the panel and focuses the textarea — used
+  // when we're nudging the user to add a description after an UNKNOWN
+  // result or an unsatisfying match.
+  window.openHintPanel = function() {
+    body.classList.remove('hidden');
+    toggle.classList.add('open');
+    const input = document.getElementById('hintInput');
+    if (input) input.focus();
+  };
+})();
+
+/* Called from the "Not the right match? Try again with a description"
+   prompts shown after results/errors. Just opens the panel and scrolls
+   the user back up to the upload zone/description box — it doesn't
+   re-run the search itself, since the user still needs to type first. */
+window.retryWithHint = function() {
+  if (window.openHintPanel) window.openHintPanel();
+  const zone = document.getElementById('uploadZone');
+  if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
 
 /* =========================================================
    RENDER RESULTS
@@ -535,11 +672,13 @@ function showResults({ media, sources, aiResult, similar }) {
       '<h3><i class="fas fa-globe"></i> Where to Watch</h3>' +
       '<div class="stream-tab-content active" id="sTab-normal">' + buildNormalGrid(sources, media.title) + '</div>' +
     '</div>' +
-    '<div class="satisfaction-tip">' +
-      '<i class="fas fa-info-circle"></i>' +
-      '<span>Not satisfied with this match? <strong>Try again</strong>, but this time write a simple description of what you saw in the optional box below the upload zone to help the AI search!</span>' +
-    '</div>' +
-    '<button class="btn-reset" onclick="window.clearUpload()"><i class="fas fa-redo"></i> Search Another</button>';
+    '<button class="btn-reset" onclick="window.clearUpload()"><i class="fas fa-redo"></i> Search Another</button>' +
+    (aiResult ?
+      '<div class="feedback-note">' +
+        '<i class="fas fa-circle-question"></i>' +
+        'Not the right match? <button type="button" class="link-btn" onclick="window.retryWithHint()">Add a description and try again</button>' +
+      '</div>'
+    : '');
 
   if (similar && similar.length > 0) {
     const cards = similar.filter(s => s.poster).map(s =>
@@ -614,20 +753,29 @@ function setStep(n, msg) {
   const el = document.getElementById('loadingText');
   if (el) el.innerHTML = msg + '<span class="dots"></span>';
 }
-function showError(msg) {
+function showError(msg, hintAlreadyTried) {
   hideLoading();
   const s = document.getElementById('resultsSection');
   s.classList.remove('hidden');
+  // Only nudge the user toward "add a description" when they haven't
+  // already given one this round — repeating that suggestion right after
+  // they typed one and it still failed just makes it look like their input
+  // was ignored.
+  const offerHint = !!document.getElementById('hintPanel') && !hintAlreadyTried;
   s.innerHTML =
     '<div class="error-box">' +
     '<i class="fas fa-exclamation-circle"></i>' +
     '<h3>Could Not Identify</h3>' +
     '<p>' + msg + '</p>' +
-    '<div class="satisfaction-tip" style="max-width: 600px; margin: 20px auto 10px; text-align: left;">' +
-      '<i class="fas fa-lightbulb"></i>' +
-      '<span><strong>Tip:</strong> If the visual match failed, try describing the scene in your own words (e.g. details, actors, dialogue) in the description box below the upload zone to help the AI search.</span>' +
-    '</div>' +
+    (offerHint ?
+      '<p style="font-size:0.85rem;color:var(--gray-light);margin-top:-4px;">' +
+        'Try adding a short description of what you saw — actors, setting, plot — it can help the AI narrow it down.' +
+      '</p>'
+    : '') +
     '<button onclick="window.clearUpload()" class="btn-reset"><i class="fas fa-redo"></i> Try Again</button>' +
+    (offerHint ?
+      '<button onclick="window.retryWithHint()" class="btn-reset" style="margin-left:10px;"><i class="fas fa-comment-dots"></i> Add Description</button>'
+    : '') +
     '</div>';
 }
 function animateProgress(from, to, dur) {

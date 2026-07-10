@@ -128,12 +128,18 @@
               </div>
             </div>
 
-            <!-- Optional scene description panel -->
-            <div class="scene-desc-panel hidden" id="sceneDescPanel">
-              <label for="sceneDescInput" class="scene-desc-label">
-                <i class="fas fa-comment-alt"></i> Describe what you saw (Optional)
-              </label>
-              <textarea id="sceneDescInput" placeholder="Describe the scene (e.g. characters, costumes, props, or dialogue) to help the AI search..." rows="2"></textarea>
+            <!-- Optional description panel — helps the AI when visuals alone aren't enough -->
+            <div class="hint-panel" id="hintPanel">
+              <button type="button" class="hint-toggle" id="hintToggle">
+                <i class="fas fa-comment-alt"></i>
+                <span>Describe what you saw <em>(optional)</em></span>
+                <i class="fas fa-chevron-down hint-chevron"></i>
+              </button>
+              <div class="hint-body hidden" id="hintBody">
+                <textarea id="hintInput" rows="3" maxlength="300"
+                  placeholder="e.g. a music teacher scolding a student in a classroom, feels like a Nigerian or American drama..."></textarea>
+                <p class="hint-note">Totally optional. If the AI can't recognise the scene from the image alone, a short description of the actors, setting or plot can help it get there.</p>
+              </div>
             </div>
 
             <!-- Identify button lives here, below the upload zone -->

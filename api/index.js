@@ -11,98 +11,55 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.G
 
 // Endpoint: Identify
 app.post('/api/identify', async (req, res) => {
-  const { imageBuffer, mimeType, description } = req.body;
-  if (!imageBuffer) return res.status(400).json({ error: 'No image buffer provided' });
-
-  const token = process.env.GITHUB_TOKEN;
-
   try {
-    const promptText = `You are an expert movie and TV show identifier.
-Analyze this image frame carefully:
-1. Identify ALL visible actors by their face
-2. Note the costumes, setting, props, era
-3. Read ANY visible text, subtitles, watermarks, or titles on screen
-${description ? `\nAdditional scene details/context provided by the user:\n"${description}"\nCombine this user description with the visual cues to identify the movie/show.` : ''}
+    // Accept either a single `imageBuffer` (legacy, one image) or an array
+    // of `frames` (preferred for video — lets Gemini cross-reference
+    // multiple moments from the same clip in a single request instead of
+    // the client looping call-by-call). `correction` is present on a retry
+    // where the client's cast cross-check caught a wrong first guess.
+    const { imageBuffer, frames, mimeType, correction, hint } = req.body;
+    const images = (Array.isArray(frames) && frames.length) ? frames : (imageBuffer ? [imageBuffer] : []);
+    if (!images.length) return res.status(400).json({ error: 'No image data provided' });
 
-Then output EXACTLY a raw JSON object with these keys (do not include any markdown formatting, extra text, or prefix):
-{
-  "title": "[exact title or UNKNOWN]",
-  "year": [4-digit integer year, or 0 if unknown],
-  "type": "[MOVIE or TV]",
-  "confidence": "[HIGH or MEDIUM or LOW]",
-  "reason": "[brief sentence explaining what visual evidence confirmed this]"
-}`;
+    let promptText = images.length > 1
+      ? `You are shown ${images.length} frames captured at different moments from the SAME short video clip. Use all of them together as evidence (a clear frame can confirm a blurrier one). Identify the movie or TV show. Be careful: recognizing an actor's face is not the same as knowing which specific title you're looking at — many actors appear together in more than one project, so don't guess a title just because you recognize the cast; only report HIGH confidence if you're sure of this exact scene. Return ONLY a raw JSON object with these keys: title, year, type, confidence (HIGH/MEDIUM/LOW). Do not include any markdown formatting or extra text. If you cannot identify it from any frame, return {"title":"UNKNOWN","year":0,"type":"MOVIE","confidence":"LOW"}.`
+      : `Identify the movie or show from this frame. Be careful: recognizing an actor's face is not the same as knowing which specific title you're looking at — many actors appear together in more than one project, so don't guess a title just because you recognize the cast. Return ONLY a raw JSON object with these keys: title, year, type, confidence (HIGH/MEDIUM/LOW). Do not include any markdown formatting or extra text. If you cannot identify it, return {"title":"UNKNOWN","year":0,"type":"MOVIE","confidence":"LOW"}.`;
 
-    const response = await fetch('https://models.github.ai/inference/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: promptText
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mimeType || 'image/jpeg'};base64,${imageBuffer}`
-                }
+    if (correction && correction.rejectedTitle) {
+      promptText += ` IMPORTANT — SELF-CORRECTION NEEDED: your previous answer was "${correction.rejectedTitle}", but that title's real cast is: ${correction.actualCast || 'unknown'}, which does not match the actor(s) you described (${correction.mentionedActors || 'unclear'}). That guess was WRONG — do not repeat it. These same actors likely appear together in a different film or show; identify that one instead, or return UNKNOWN if you genuinely cannot.`;
+    }
+
+    if (hint && String(hint).trim()) {
+      const clean = String(hint).trim().slice(0, 500);
+      promptText += ` VIEWER-PROVIDED DESCRIPTION (optional context, may be vague or slightly wrong — weigh it alongside the actual visual evidence rather than accepting it uncritically): "${clean}".`;
+    }
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: [
+        {
+          parts: [
+            { text: promptText },
+            ...images.map(img => ({
+              inlineData: {
+                mimeType: mimeType || 'image/jpeg',
+                data: img
               }
-            ]
-          }
-        ],
-        response_format: { type: "json_object" }
-      })
+            }))
+          ]
+        }
+      ]
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`GitHub Models API HTTP ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
-
-    if (!text) throw new Error('Empty response from gpt-4o');
-
-    const cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const match = cleanText.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('No JSON found in response');
-
-    const result = JSON.parse(match[0]);
-    let { title, year, type, confidence, reason } = result;
-
-    if (!title || title.toUpperCase() === 'UNKNOWN') {
-      return res.status(200).json({ title: 'UNKNOWN', year: 0, type: 'MOVIE' });
-    }
-
-    const parsedType = (type && (type.toUpperCase() === 'TV' || type.toUpperCase() === 'SERIES')) ? 'SERIES' : 'MOVIE';
-    const parsedConf = confidence ? confidence.toUpperCase() : 'HIGH';
-
-    if (parsedConf === 'LOW') {
-      return res.status(200).json({ title: 'UNKNOWN', year: 0, type: 'MOVIE' });
-    }
-
-    return res.json({
-      title,
-      year: parseInt(year) || year || 'UNKNOWN',
-      type: parsedType,
-      confidence: parsedConf,
-      reason: reason || 'Identified via GPT-4o on GitHub Models.'
-    });
+    let text = response.text;
+    text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON in response');
+    res.json(JSON.parse(match[0]));
 
   } catch (error) {
     console.error('Identification Error:', error.message);
-    res.status(500).json({ error: 'Failed to identify media', details: error.message });
+    res.status(500).json({ error: 'We had trouble analysing that scene. Please try again.' });
   }
 });
 

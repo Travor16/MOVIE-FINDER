@@ -6,6 +6,3 @@ node_modules/
 
 .vercel
 .env*
-last-frame.jpg
-*.jpg
-server.js

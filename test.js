@@ -1,40 +1,20 @@
+import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const token = process.env.GITHUB_TOKEN;
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function run() {
   try {
-    console.log("Calling GitHub Models API...");
-    const response = await fetch('https://models.github.ai/inference/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'user',
-            content: 'Hello! Please tell me a 1-word joke.'
-          }
-        ]
-      })
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: 'Tell me a 1-word joke',
     });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    console.log("Response:", JSON.stringify(data, null, 2));
+    console.log("Response text:", response.text);
+    console.log("Response JSON:", JSON.stringify(response));
   } catch (err) {
-    console.error("Error:", err.message);
+    console.error("Error:", err);
   }
 }
 
