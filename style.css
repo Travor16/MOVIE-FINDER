@@ -1,4 +1,4 @@
-﻿/* ===== RESET & BASE ===== */
+/* ===== RESET & BASE ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body { font-family: 'Inter', sans-serif; background: #000000; color: #e8e8e8; line-height: 1.6; overflow-x: hidden; }
@@ -513,4 +513,77 @@ img, video { max-width: 100%; display: block; }
     padding-right: 16px !important;
     box-sizing: border-box !important;
   }
+}
+
+/* ===== OPTIONAL SCENE DESCRIPTION PANEL ===== */
+.scene-desc-panel {
+  margin-top: 18px;
+  background: rgba(10, 10, 10, 0.5);
+  border: 1px dashed rgba(192, 57, 59, 0.4);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  animation: fadeIn 0.4s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.scene-desc-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #c0393b;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 12px;
+}
+.scene-desc-panel textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(50, 3, 4, 0.8);
+  border-radius: 8px;
+  padding: 12px;
+  color: #fff;
+  font-size: 0.88rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 70px;
+  transition: var(--transition);
+}
+.scene-desc-panel textarea:focus {
+  outline: none;
+  border-color: #c0393b;
+  box-shadow: 0 0 8px rgba(192, 57, 59, 0.2);
+}
+.scene-desc-panel textarea::placeholder {
+  color: var(--gray);
+  font-size: 0.82rem;
+}
+
+/* ===== SATISFACTION TIP ===== */
+.satisfaction-tip {
+  background: rgba(192, 57, 59, 0.05);
+  border: 1px dashed rgba(192, 57, 59, 0.3);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--gray-light);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  text-align: left;
+}
+.satisfaction-tip i {
+  color: #c0393b;
+  font-size: 1.1rem;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.satisfaction-tip strong {
+  color: #fff;
 }
