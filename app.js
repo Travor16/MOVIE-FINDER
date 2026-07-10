@@ -152,7 +152,7 @@ function captureVideoFrame(file) {
    lets us throw away black/blurry/transition frames without missing the
    good ones. */
 const FRAME_SAMPLE_COUNT = 10;
-const FRAME_SEND_COUNT   = 6;
+const FRAME_SEND_COUNT   = 3;
 
 /* Score a frame for "how identifiable is this likely to be" using real
    pixel statistics (brightness + contrast) instead of just JPEG byte size.
