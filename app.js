@@ -174,34 +174,78 @@ function scoreFrame(ctx, w, h) {
   return variance * exposurePenalty;
 }
 
+/* =====================================================================
+   STREAMLINED: SINGLE-FRAME CAPTURE (Eliminates Production Timeouts)
+   ===================================================================== */
 function captureMultipleFrames(file) {
-  // Capture frames at multiple timestamps, score each one, and return the
-  // best-looking subset (most detail / contrast), most promising first.
+  // For production stability, we abandon multi-frame analysis and scoring.
+  // We capture ONE high-quality frame at the midpoint.
+
   return new Promise((resolve, reject) => {
+    // 1. Basic setup (Keep this part)
     const video = document.createElement('video');
     const url = URL.createObjectURL(file);
     video.src = url;
     video.muted = true;
     video.playsInline = true;
-    video.preload = 'auto';
+    // Preload 'metadata' is enough since we seek immediately
+    video.preload = 'metadata';
 
-    const MAX = 1024;
-    const timestamps = Array.from({ length: FRAME_SAMPLE_COUNT }, (_, i) =>
-      (i + 1) / (FRAME_SAMPLE_COUNT + 1)
-    ); // evenly spaced, avoiding the very first/last instant (titles/black)
-    const candidates = [];
-    let idx = 0;
-    let settled = false;
-
-    function finish() {
-      if (settled) return;
-      settled = true;
+    // Cleanup function to prevent memory leaks
+    function cleanup() {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
       URL.revokeObjectURL(url);
-      candidates.sort((a, b) => b.score - a.score);
-      const best = candidates.slice(0, FRAME_SEND_COUNT).map(c => c.data);
-      resolve(best.length ? best : candidates.map(c => c.data));
     }
 
+    // 2. Load metadata to get duration
+    video.onloadedmetadata = () => {
+      // Seek to the exact middle of the video
+      video.currentTime = video.duration * 0.5;
+    };
+
+    // 3. Once the seek completes, draw the frame
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        // Use a standard, AI-friendly resolution
+        canvas.width = 640;
+        canvas.height = 360;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Get Base64 string (using quality 0.8 for good balance)
+        const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+        cleanup();
+        // Resolve with an array containing ONLY ONE frame
+        resolve([base64Data]);
+      } catch (e) {
+        cleanup();
+        // Pass the error up
+        reject(new Error("Canvas drawing failed: " + e.message));
+      }
+    };
+
+    // Handle loading errors
+    video.onerror = () => {
+      cleanup();
+      reject(new Error("Video loading failed."));
+    };
+
+    // Start loading
+    video.load();
+
+    // Add a safety timeout (fallback in case the browser hangs on seeked)
+    setTimeout(() => {
+      if (video.readyState < 2) { // HAVE_CURRENT_DATA or better
+        cleanup();
+        reject(new Error("Frame capture timed out."));
+      }
+    }, 15000); // 15 second timeout is generous
+  });
+}
     function captureAt(t) {
       const target = Math.min(t * video.duration, Math.max(video.duration - 0.05, 0));
       video.currentTime = target;
