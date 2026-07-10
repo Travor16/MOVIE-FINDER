@@ -102,7 +102,7 @@ app.post('/api/identify', async (req, res) => {
     const prompt = (images.length > 1 ? PROMPT_MULTI : PROMPT_SINGLE) + buildCorrectionSuffix(correction) + buildHintSuffix(hint);
     const content = [
       { type: 'text', text: prompt },
-      ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${img}`, detail: 'high' } }))
+      ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${img}`, detail: 'low' } }))
     ];
 
     const gptRes = await fetch('https://models.inference.ai.azure.com/chat/completions', {
