@@ -178,20 +178,16 @@ function scoreFrame(ctx, w, h) {
    STREAMLINED: SINGLE-FRAME CAPTURE (Eliminates Production Timeouts)
    ===================================================================== */
 function captureMultipleFrames(file) {
-  // For production stability, we abandon multi-frame analysis and scoring.
-  // We capture ONE high-quality frame at the midpoint.
-
+  // Captures one high-quality frame at the midpoint for production stability.
   return new Promise((resolve, reject) => {
-    // 1. Basic setup (Keep this part)
     const video = document.createElement('video');
     const url = URL.createObjectURL(file);
+    
     video.src = url;
     video.muted = true;
     video.playsInline = true;
-    // Preload 'metadata' is enough since we seek immediately
     video.preload = 'metadata';
 
-    // Cleanup function to prevent memory leaks
     function cleanup() {
       video.pause();
       video.removeAttribute('src');
@@ -199,103 +195,44 @@ function captureMultipleFrames(file) {
       URL.revokeObjectURL(url);
     }
 
-    // 2. Load metadata to get duration
     video.onloadedmetadata = () => {
-      // Seek to the exact middle of the video
+      // Seek to middle
       video.currentTime = video.duration * 0.5;
     };
 
-    // 3. Once the seek completes, draw the frame
     video.onseeked = () => {
       try {
         const canvas = document.createElement('canvas');
-        // Use a standard, AI-friendly resolution
         canvas.width = 640;
         canvas.height = 360;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // Get Base64 string (using quality 0.8 for good balance)
         const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
         cleanup();
-        // Resolve with an array containing ONLY ONE frame
         resolve([base64Data]);
       } catch (e) {
         cleanup();
-        // Pass the error up
         reject(new Error("Canvas drawing failed: " + e.message));
       }
     };
 
-    // Handle loading errors
     video.onerror = () => {
       cleanup();
       reject(new Error("Video loading failed."));
     };
 
-    // Start loading
-    video.load();
-
-    // Add a safety timeout (fallback in case the browser hangs on seeked)
+    // Fallback if seek hangs
     setTimeout(() => {
-      if (video.readyState < 2) { // HAVE_CURRENT_DATA or better
+      if (video.readyState < 2) {
         cleanup();
         reject(new Error("Frame capture timed out."));
       }
-    }, 15000); // 15 second timeout is generous
+    }, 15000);
+
+    video.load();
   });
 }
-    function captureAt(t) {
-      const target = Math.min(t * video.duration, Math.max(video.duration - 0.05, 0));
-      video.currentTime = target;
-    }
-
-    video.addEventListener('loadedmetadata', () => {
-      if (!video.duration || !isFinite(video.duration)) {
-        reject(new Error('Could not read video duration.'));
-        return;
-      }
-      captureAt(timestamps[idx]);
-    });
-
-    video.addEventListener('seeked', () => {
-      const canvas = document.createElement('canvas');
-      let w = video.videoWidth, h = video.videoHeight;
-      if (!w || !h) { advance(); return; }
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else       { w = Math.round(w * MAX / h); h = MAX; }
-      }
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(video, 0, 0, w, h);
-      const score = scoreFrame(ctx, w, h);
-      const data = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-      candidates.push({ data, score });
-      advance();
-    });
-
-    function advance() {
-      idx++;
-      if (idx < timestamps.length) {
-        captureAt(timestamps[idx]);
-      } else {
-        finish();
-      }
-    }
-
-    video.addEventListener('error', () => {
-      if (candidates.length) finish();
-      else reject(new Error('This video format could not be read by the browser.'));
-    });
-
-    // Safety net: some codecs/files never fire 'seeked' reliably — don't
-    // let the user wait forever, fall back to whatever we captured so far.
-    setTimeout(() => finish(), 12000);
-  });
-}
-
 /* =========================================================
    STEP 2 - DATABASE: search movies AND TV series
    ========================================================= */
