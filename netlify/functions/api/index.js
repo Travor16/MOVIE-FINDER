@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import serverless from 'serverless-http';
 
 const app = express();
@@ -9,7 +9,7 @@ app.use(express.json({ limit: '50mb' }));
 
 const RESOLVED_GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_KEYS;
 console.log(`[startup] Gemini key present: ${!!RESOLVED_GEMINI_KEY}, length: ${RESOLVED_GEMINI_KEY ? RESOLVED_GEMINI_KEY.length : 0}`);
-const ai = new GoogleGenAI({ apiKey: RESOLVED_GEMINI_KEY });
+const genAI = new GoogleGenerativeAI(RESOLVED_GEMINI_KEY);
 
 // Endpoint: Identify
 app.post('/api/identify', async (req, res) => {
@@ -33,30 +33,25 @@ app.post('/api/identify', async (req, res) => {
 
     console.log(`[identify] calling Gemini with ${images.length} image(s)...`);
     const t0 = Date.now();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: [
-        {
-          parts: [
-            { text: promptText },
-            ...images.map(img => ({
-              inlineData: {
-                mimeType: mimeType || 'image/jpeg',
-                data: img
-              }
-            }))
-          ]
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const result = await model.generateContent([
+      { text: promptText },
+      ...images.map(img => ({
+        inlineData: {
+          mimeType: mimeType || 'image/jpeg',
+          data: img
         }
-      ]
-    });
+      }))
+    ]);
+    const response = await result.response;
+    const text = response.text();
     console.log(`[identify] Gemini responded in ${Date.now() - t0}ms`);
+    console.log(`[identify] Gemini raw response: ${text}`);
 
-    let text = response.text;
-    text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const match = text.match(/\{[\s\S]*\}/);
+    let cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('No JSON in response');
     res.json(JSON.parse(match[0]));
-
   } catch (error) {
     console.error('Identification Error:', error.message);
     res.status(500).json({ error: 'We had trouble analysing that scene. Please try again.' });
