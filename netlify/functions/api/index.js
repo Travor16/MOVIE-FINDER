@@ -7,9 +7,10 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
-const WATCHMODE_KEY = process.env.WATCHMODE_API_KEY;
+const TMDB_TOKEN   = process.env.TMDB_READ_TOKEN;
+const WATCHMODE_KEY= process.env.WATCHMODE_API_KEY;
 
+/* ---------- PROMPTS (same as your local server.js) ---------- */
 const PROMPT_SINGLE = `You are a movie and TV series identification expert. Look at this image carefully.
 
 Identify the exact movie OR TV series this scene is from.
@@ -76,6 +77,30 @@ function friendlyUpstreamError(rawMsg, status) {
   return 'We had trouble analysing that scene. Please try again.';
 }
 
+// Helper: simple TMDB search using the hint
+async function searchTMDB(query) {
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_TOKEN}&query=${encodeURIComponent(query)}&include_adult=false`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const results = data.results || [];
+    // Find first result that is a movie or tv show with a title and release_date/first_air_date
+    for (const r of results) {
+      if (r.media_type === 'movie' || r.media_type === 'tv') {
+        const title = r.title || r.name;
+        const yearStr = r.release_date || r.first_air_date;
+        const year = yearStr ? parseInt(yearStr.substring(0,4),10) : 0;
+        const type = r.media_type === 'movie' ? 'MOVIE' : 'SERIES';
+        return { title, year, type };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error('[TMDB search error]', e);
+    return null;
+  }
+}
+
 // ── /api/identify ───────────────────────────────────────────
 app.post('/api/identify', async (req, res) => {
   try {
@@ -118,11 +143,29 @@ app.post('/api/identify', async (req, res) => {
     const confMatch  = text.match(/CONFIDENCE:\s*(HIGH|MEDIUM|LOW)/i);
     const reasonMatch = text.match(/REASON:\s*([^\n]+)/i);
 
-    const title = titleMatch?.[1]?.trim().replace(/^["']|["']$/g, '') || '';
-    const year  = yearMatch?.[1]?.trim() || '';
-    const type  = typeMatch?.[1]?.toUpperCase() === 'SERIES' ? 'SERIES' : 'MOVIE';
-    const conf  = confMatch?.[1]?.toUpperCase() || 'MEDIUM';
+    let title = titleMatch?.[1]?.trim().replace(/^["']|["']$/g, '') || '';
+    let year  = yearMatch?.[1]?.trim() || '';
+    let type  = typeMatch?.[1]?.toUpperCase() === 'SERIES' ? 'SERIES' : 'MOVIE';
+    let conf  = confMatch?.[1]?.toUpperCase() || 'MEDIUM';
     const reason = reasonMatch?.[1]?.trim() || '';
+
+    // Determine if we should fallback to TMDB
+    const rejectedTitle = correction?.rejectedTitle ? correction.rejectedTitle.trim() : '';
+    const needsFallback = (!title || title.toUpperCase() === 'UNKNOWN' || title.toUpperCase() === rejectedTitle.toUpperCase()) && hint && hint.trim();
+
+    if (needsFallback) {
+      console.log('[identify] Triggering TMDB fallback with hint:', hint);
+      const tmdbResult = await searchTMDB(hint);
+      if (tmdbResult) {
+        title = tmdbResult.title;
+        year  = tmdbResult.year;
+        type  = tmdbResult.type;
+        conf  = 'HIGH';
+        console.log('[identify] Using TMDB fallback result:', {title, year, type});
+        return res.json({ title, year, type, confidence: conf, reason: `Matched hint via TMDB: "${hint}"` });
+      }
+      // fallback failed – continue with original result (may be UNKNOWN)
+    }
 
     if (!title || title.toUpperCase() === 'UNKNOWN') {
       console.log('[identify] UNKNOWN — low confidence frame');
