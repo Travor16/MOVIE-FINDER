@@ -89,4 +89,4 @@ app.get('/api/watchmode', async (req, res) => {
   }
 });
 
-export default serverless(app);
+export const handler = serverless(app);
