@@ -133,6 +133,8 @@ function buildSearchQuery(hint, correction) {
 app.post('/api/identify', async (req, res) => {
   try {
     const { imageBuffer, frames, mimeType, correction, hint } = req.body;
+    console.log('[identify] Received correction:', correction);
+    console.log('[identify] Received hint:', hint);
     const images = (Array.isArray(frames) && frames.length) ? frames : (imageBuffer ? [imageBuffer] : []);
     if (!images.length) return res.status(400).json({ error: 'No image data provided' });
 
@@ -177,9 +179,12 @@ app.post('/api/identify', async (req, res) => {
     let conf  = confMatch?.[1]?.toUpperCase() || 'MEDIUM';
     const reason = reasonMatch?.[1]?.trim() || '';
 
+    console.log(`[identify] Parsed title: "${title}", year: "${year}", type: "${type}", confidence: "${conf}"`);
+
     // Determine if we should fallback to TMDB
     const rejectedTitle = correction?.rejectedTitle ? correction.rejectedTitle.trim() : '';
     const needsFallback = (!title || title.toUpperCase() === 'UNKNOWN' || title.toUpperCase() === rejectedTitle.toUpperCase()) && hint && hint.trim();
+    console.log(`[identify] Needs fallback? title empty/UNKNOWN: ${!title || title.toUpperCase() === 'UNKNOWN'}; title equals rejected: ${title.toUpperCase() === rejectedTitle.toUpperCase()}; hint present: ${!!hint && hint.trim()}`);
 
     if (needsFallback) {
       // Build a richer query: hint + cast info from correction
