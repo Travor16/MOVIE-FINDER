@@ -77,7 +77,7 @@ function friendlyUpstreamError(rawMsg, status) {
   return 'We had trouble analysing that scene. Please try again.';
 }
 
-// Helper: simple TMDB search using the hint
+// Helper: simple TMDB search using a query string
 async function searchTMDB(query) {
   try {
     const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_TOKEN}&query=${encodeURIComponent(query)}&include_adult=false`);
@@ -99,6 +99,34 @@ async function searchTMDB(query) {
     console.error('[TMDB search error]', e);
     return null;
   }
+}
+
+// Helper: build a search query from hint and correction data
+function buildSearchQuery(hint, correction) {
+  const parts = [];
+  if (hint && hint.trim()) {
+    parts.push(hint.trim());
+  }
+  // Add actualCast if present (list of actors in the real cast of the rejected title)
+  if (correction && correction.actualCast) {
+    // actualCast might be a string like "Actor1, Actor2, Actor3"
+    const castStr = String(correction.actualCast).trim();
+    if (castStr) {
+      // split by common separators
+      const castArray = castStr.split(/[,&]/).map(s => s.trim()).filter(s => s);
+      parts.push(...castArray.slice(0,3)); // limit to first 3 to avoid too long query
+    }
+  }
+  // Add mentionedActors if present (actors user described)
+  if (correction && correction.mentionedActors) {
+    const mentionedStr = String(correction.mentionedActors).trim();
+    if (mentionedStr) {
+      const mentionedArray = mentionedStr.split(/[,&]/).map(s => s.trim()).filter(s => s);
+      parts.push(...mentionedArray.slice(0,3));
+    }
+  }
+  // Join with space
+  return parts.filter(p => p).join(' ');
 }
 
 // ── /api/identify ───────────────────────────────────────────
@@ -154,15 +182,17 @@ app.post('/api/identify', async (req, res) => {
     const needsFallback = (!title || title.toUpperCase() === 'UNKNOWN' || title.toUpperCase() === rejectedTitle.toUpperCase()) && hint && hint.trim();
 
     if (needsFallback) {
-      console.log('[identify] Triggering TMDB fallback with hint:', hint);
-      const tmdbResult = await searchTMDB(hint);
+      // Build a richer query: hint + cast info from correction
+      const query = buildSearchQuery(hint, correction);
+      console.log(`[identify] Triggering TMDB fallback with query: "${query}"`);
+      const tmdbResult = await searchTMDB(query);
       if (tmdbResult) {
         title = tmdbResult.title;
         year  = tmdbResult.year;
         type  = tmdbResult.type;
         conf  = 'HIGH';
         console.log('[identify] Using TMDB fallback result:', {title, year, type});
-        return res.json({ title, year, type, confidence: conf, reason: `Matched hint via TMDB: "${hint}"` });
+        return res.json({ title, year, type, confidence: conf, reason: `Matched hint via TMDB: "${query}"` });
       }
       // fallback failed – continue with original result (may be UNKNOWN)
     }
