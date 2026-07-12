@@ -5,6 +5,11 @@ import serverless from 'serverless-http';
 console.log('Module loaded, starting app initialization...');
 
 const app = express();
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`[request] ${req.method} ${req.path} ${JSON.stringify(req.query)}`);
+  next();
+});
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
