@@ -19,8 +19,11 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+console.log('[middleware] Static file serving configured');
+
 // Serve static files from the project root (index.html, CSS, JS, images, etc.)
 app.use(express.static(projectRoot, { dotfiles: 'ignore' }));
+console.log('[middleware] Static file serving active');
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
@@ -167,12 +170,15 @@ REASON: [what you see]`;
 // ── /api/tmdb ───────────────────────────────────────────────
 app.get('/api/tmdb', async (req, res) => {
   try {
+    console.log('[api/tmdb] Request received');
     const { path } = req.query;
     const response = await fetch(`https://api.themoviedb.org/3${path}`, {
       headers: { 'Authorization': `Bearer ${TMDB_TOKEN}`, 'accept': 'application/json' }
     });
+    console.log('[api/tmdb] Got response from TMDB');
     res.json(await response.json());
   } catch (error) {
+    console.error('[api/tmdb] error:', error);
     res.status(500).json({ error: 'TMDB proxy failed' });
   }
 });
@@ -180,13 +186,16 @@ app.get('/api/tmdb', async (req, res) => {
 // ── /api/watchmode/search ───────────────────────────────────
 app.get('/api/watchmode/search', async (req, res) => {
   try {
+    console.log('[api/watchmode/search] Request received');
     const { imdb_id, title } = req.query;
     const url = imdb_id
       ? `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_KEY}&search_field=imdb_id&search_value=${imdb_id}`
       : `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_KEY}&search_field=name&search_value=${encodeURIComponent(title)}`;
     const resp = await fetch(url);
+    console.log('[api/watchmode/search] Got response from Watchmode');
     res.json(await resp.json());
   } catch (err) {
+    console.error('[api/watchmode/search] error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -194,10 +203,13 @@ app.get('/api/watchmode/search', async (req, res) => {
 // ── /api/watchmode/sources/:id ──────────────────────────────
 app.get('/api/watchmode/sources/:id', async (req, res) => {
   try {
+    console.log('[api/watchmode/sources/:id] Request received');
     const url = `https://api.watchmode.com/v1/title/${req.params.id}/sources/?apiKey=${WATCHMODE_KEY}`;
     const resp = await fetch(url);
+    console.log('[api/watchmode/sources/:id] Got response from Watchmode');
     res.json(await resp.json());
   } catch (err) {
+    console.error('[api/watchmode/sources/:id] error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -205,22 +217,28 @@ app.get('/api/watchmode/sources/:id', async (req, res) => {
 // ── /api/watchmode (legacy) ─────────────────────────────────
 app.get('/api/watchmode', async (req, res) => {
   try {
+    console.log('[api/watchmode] Request received');
     const { query } = req.query;
     const url = `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_KEY}&search_field=title&search_value=${encodeURIComponent(query)}`;
     const resp = await fetch(url);
+    console.log('[api/watchmode] Got response from Watchmode');
     res.json(await resp.json());
   } catch (err) {
+    console.error('[api/watchmode] error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // SPA fallback: for any request that didn't match a static file or an API route, serve index.html
 app.use((req, res) => {
+  console.log(`[fallback] Handling request: ${req.method} ${req.path}`);
   // If it's an API route that wasn't handled above, return 404
   if (req.path.startsWith('/api/')) {
+    console.log('[fallback] API 404');
     return res.status(404).json({ error: 'API endpoint not found' });
   }
   // For all other routes, serve index.html (allows client-side routing)
+  console.log('[fallback] Serving index.html');
   res.sendFile(path.join(projectRoot, 'index.html'));
 });
 
