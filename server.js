@@ -230,17 +230,7 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Export the app for serverless platforms (Vercel) via serverless-http.
-// The `listen` call below only runs when started directly with `node server.js`
-// (local dev) — it is skipped when the module is imported by api/index.js.
-export const handler = null; // placeholder; real handler is built in api/index.js
-export default app;
-export { app };
-
-// Only start the local HTTP server when run directly (not when imported).
-if (process.argv[1] && process.argv[1].endsWith('server.js')) {
-  app.listen(PORT, () => {
-    console.log(`Movie Finder running at http://localhost:${PORT}`);
-    console.log(`GPT-4o: ${GITHUB_TOKEN ? '✅' : '❌ MISSING'}`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`Movie Finder running at http://localhost:${PORT}`);
+  console.log(`GPT-4o: ${GITHUB_TOKEN ? '✅' : '❌ MISSING'}`);
+});

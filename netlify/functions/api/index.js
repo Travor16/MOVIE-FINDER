@@ -7,10 +7,9 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const TMDB_TOKEN   = process.env.TMDB_READ_TOKEN;
-const WATCHMODE_KEY= process.env.WATCHMODE_API_KEY;
+const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
+const WATCHMODE_KEY = process.env.WATCHMODE_API_KEY;
 
-/* ---------- PROMPTS (same as your local server.js) ---------- */
 const PROMPT_SINGLE = `You are a movie and TV series identification expert. Look at this image carefully.
 
 Identify the exact movie OR TV series this scene is from.
@@ -77,64 +76,10 @@ function friendlyUpstreamError(rawMsg, status) {
   return 'We had trouble analysing that scene. Please try again.';
 }
 
-// Helper: simple TMDB search using a query string
-async function searchTMDB(query) {
-  try {
-    const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_TOKEN}&query=${encodeURIComponent(query)}&include_adult=false`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const results = data.results || [];
-    // Find first result that is a movie or tv show with a title and release_date/first_air_date
-    for (const r of results) {
-      if (r.media_type === 'movie' || r.media_type === 'tv') {
-        const title = r.title || r.name;
-        const yearStr = r.release_date || r.first_air_date;
-        const year = yearStr ? parseInt(yearStr.substring(0,4),10) : 0;
-        const type = r.media_type === 'movie' ? 'MOVIE' : 'SERIES';
-        return { title, year, type };
-      }
-    }
-    return null;
-  } catch (e) {
-    console.error('[TMDB search error]', e);
-    return null;
-  }
-}
-
-// Helper: build a search query from hint and correction data
-function buildSearchQuery(hint, correction) {
-  const parts = [];
-  if (hint && hint.trim()) {
-    parts.push(hint.trim());
-  }
-  // Add actualCast if present (list of actors in the real cast of the rejected title)
-  if (correction && correction.actualCast) {
-    // actualCast might be a string like "Actor1, Actor2, Actor3"
-    const castStr = String(correction.actualCast).trim();
-    if (castStr) {
-      // split by common separators
-      const castArray = castStr.split(/[,&]/).map(s => s.trim()).filter(s => s);
-      parts.push(...castArray.slice(0,3)); // limit to first 3 to avoid too long query
-    }
-  }
-  // Add mentionedActors if present (actors user described)
-  if (correction && correction.mentionedActors) {
-    const mentionedStr = String(correction.mentionedActors).trim();
-    if (mentionedStr) {
-      const mentionedArray = mentionedStr.split(/[,&]/).map(s => s.trim()).filter(s => s);
-      parts.push(...mentionedArray.slice(0,3));
-    }
-  }
-  // Join with space
-  return parts.filter(p => p).join(' ');
-}
-
 // ── /api/identify ───────────────────────────────────────────
 app.post('/api/identify', async (req, res) => {
   try {
     const { imageBuffer, frames, mimeType, correction, hint } = req.body;
-    console.log('[identify] Received correction:', correction);
-    console.log('[identify] Received hint:', hint);
     const images = (Array.isArray(frames) && frames.length) ? frames : (imageBuffer ? [imageBuffer] : []);
     if (!images.length) return res.status(400).json({ error: 'No image data provided' });
 
@@ -173,34 +118,11 @@ app.post('/api/identify', async (req, res) => {
     const confMatch  = text.match(/CONFIDENCE:\s*(HIGH|MEDIUM|LOW)/i);
     const reasonMatch = text.match(/REASON:\s*([^\n]+)/i);
 
-    let title = titleMatch?.[1]?.trim().replace(/^["']|["']$/g, '') || '';
-    let year  = yearMatch?.[1]?.trim() || '';
-    let type  = typeMatch?.[1]?.toUpperCase() === 'SERIES' ? 'SERIES' : 'MOVIE';
-    let conf  = confMatch?.[1]?.toUpperCase() || 'MEDIUM';
+    const title = titleMatch?.[1]?.trim().replace(/^["']|["']$/g, '') || '';
+    const year  = yearMatch?.[1]?.trim() || '';
+    const type  = typeMatch?.[1]?.toUpperCase() === 'SERIES' ? 'SERIES' : 'MOVIE';
+    const conf  = confMatch?.[1]?.toUpperCase() || 'MEDIUM';
     const reason = reasonMatch?.[1]?.trim() || '';
-
-    console.log(`[identify] Parsed title: "${title}", year: "${year}", type: "${type}", confidence: "${conf}"`);
-
-    // Determine if we should fallback to TMDB
-    const rejectedTitle = correction?.rejectedTitle ? correction.rejectedTitle.trim() : '';
-    const needsFallback = (!title || title.toUpperCase() === 'UNKNOWN' || title.toUpperCase() === rejectedTitle.toUpperCase()) && hint && hint.trim();
-    console.log(`[identify] Needs fallback? title empty/UNKNOWN: ${!title || title.toUpperCase() === 'UNKNOWN'}; title equals rejected: ${title.toUpperCase() === rejectedTitle.toUpperCase()}; hint present: ${!!hint && hint.trim()}`);
-
-    if (needsFallback) {
-      // Build a richer query: hint + cast info from correction
-      const query = buildSearchQuery(hint, correction);
-      console.log(`[identify] Triggering TMDB fallback with query: "${query}"`);
-      const tmdbResult = await searchTMDB(query);
-      if (tmdbResult) {
-        title = tmdbResult.title;
-        year  = tmdbResult.year;
-        type  = tmdbResult.type;
-        conf  = 'HIGH';
-        console.log('[identify] Using TMDB fallback result:', {title, year, type});
-        return res.json({ title, year, type, confidence: conf, reason: `Matched hint via TMDB: "${query}"` });
-      }
-      // fallback failed – continue with original result (may be UNKNOWN)
-    }
 
     if (!title || title.toUpperCase() === 'UNKNOWN') {
       console.log('[identify] UNKNOWN — low confidence frame');
