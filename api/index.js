@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import serverless from 'serverless-http';
 
+console.log('Module loaded, starting app initialization...');
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
