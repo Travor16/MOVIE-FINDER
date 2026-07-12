@@ -1,246 +1,39 @@
 import express from 'express';
 import cors from 'cors';
 import serverless from 'serverless-http';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 console.log('Module loaded, starting app initialization...');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRoot = path.dirname(__dirname); // one level up from api/
-
 const app = express();
-// Request logging middleware
+// Simple middleware to test
 app.use((req, res, next) => {
-  console.log(`[request] ${req.method} ${req.path} ${JSON.stringify(req.query)}`);
+  console.log(`[middleware] ${req.method} ${req.path}`);
   next();
 });
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-console.log('[middleware] Static file serving configured');
+console.log('Middleware setup complete');
 
-// Serve static files from the project root (index.html, CSS, JS, images, etc.)
-app.use(express.static(projectRoot, { dotfiles: 'ignore' }));
-console.log('[middleware] Static file serving active');
-
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
-const WATCHMODE_KEY = process.env.WATCHMODE_API_KEY;
-console.log('[env] Checking variables: GITHUB_TOKEN:', !!GITHUB_TOKEN, 'TMDB_TOKEN:', !!TMDB_TOKEN, 'WATCHMODE_KEY:', !!WATCHMODE_KEY);
-
-// ── /api/identify ───────────────────────────────────────────
-app.post('/api/identify', async (req, res) => {
-  try {
-    console.log('[identify] Request handler started');
-    const { imageBuffer, frames, mimeType, correction, hint } = req.body;
-    const images = (Array.isArray(frames) && frames.length) ? frames : (imageBuffer ? [imageBuffer] : []);
-    if (!images.length) return res.status(400).json({ error: 'No image data provided' });
-
-    const totalKb = Math.round(images.reduce((s, f) => s + f.length, 0) * 0.75 / 1024);
-    console.log(`[identify] ${images.length} frame(s), ${totalKb} KB total${correction ? ' [correction pass]' : ''}${hint ? ' [with viewer description]' : ''}`);
-
-    const PROMPT_SINGLE = `You are a movie and TV series identification expert. Look at this image carefully.
-
-Identify the exact movie OR TV series this scene is from.
-
-Look for: actor faces, costumes, props, setting, any on-screen text, subtitles, watermarks, logos, cinematography style.
-
-Be careful: recognizing an actor's face is not the same as knowing which specific film you're looking at — many actors appear together in more than one project. Only use HIGH confidence if you're sure of this exact scene/film, not just the actors in it. If you recognize the people but are unsure of the specific title, use MEDIUM confidence and say so in REASON.
-
-Reply in this EXACT format only:
-TITLE: [exact title]
-YEAR: [year]
-TYPE: [MOVIE or SERIES]
-CONFIDENCE: [HIGH or MEDIUM or LOW]
-REASON: [one to two sentences of visual evidence — explicitly name every actor's face you recognize, even if unsure of the exact title]
-
-If you cannot identify it:
-TITLE: UNKNOWN
-YEAR: UNKNOWN
-TYPE: UNKNOWN
-CONFIDENCE: LOW
-REASON: [what you see]`;
-
-    const PROMPT_MULTI = `You are a movie and TV series identification expert. You are shown several frames captured at different moments from the SAME short video clip.
-
-Use all frames together as evidence — a face, prop, or logo that's clear in one frame can confirm a blurrier moment in another. Identify the exact movie OR TV series this scene is from.
-
-Look for: actor faces, costumes, props, setting, any on-screen text, subtitles, watermarks, logos, cinematography style. If frames look like different unrelated shots, focus on whichever frame gives the strongest, most specific evidence.
-
-Be careful: recognizing an actor's face is not the same as knowing which specific film you're looking at — many actors appear together in more than one project, so don't guess a title just because you recognize the cast. Only use HIGH confidence if you're sure of this exact scene/film. If you recognize the people but are unsure of the specific title, use MEDIUM confidence and say so in REASON, naming the actors you see so it can be checked.
-
-Reply in this EXACT format only:
-TITLE: [exact title]
-YEAR: [year]
-TYPE: [MOVIE or SERIES]
-CONFIDENCE: [HIGH or MEDIUM or LOW]
-REASON: [one to two sentences of visual evidence — explicitly name every actor's face you recognize, even if unsure of the exact title; mention which frame if relevant]
-
-If you cannot identify it from any frame:
-TITLE: UNKNOWN
-YEAR: UNKNOWN
-TYPE: UNKNOWN
-CONFIDENCE: LOW
-REASON: [what you see]`;
-
-    function buildCorrectionSuffix(correction) {
-      if (!correction || !correction.rejectedTitle) return '';
-      return `\n\nIMPORTANT — SELF-CORRECTION NEEDED: Your previous answer was "${correction.rejectedTitle}", but that title's real cast is: ${correction.actualCast || 'unknown'}. That does not match the actor(s) you described seeing in the frame(s) (${correction.mentionedActors || 'unclear'}). Your previous guess was therefore WRONG for this scene — do not repeat it. Two actors can appear together in more than one film; think about which OTHER movie or TV series these actual actors/scene actually belong to. If you genuinely cannot determine the correct title, return UNKNOWN rather than repeating the same wrong guess.`;
-    }
-
-    function buildHintSuffix(hint) {
-      if (!hint || !String(hint).trim()) return '';
-      const clean = String(hint).trim().slice(0, 500);
-      return `\n\nVIEWER-PROVIDED DESCRIPTION (optional context, may be vague, partial, or slightly wrong — use it as a helpful clue alongside the visual evidence, not as a fact to accept uncritically): "${clean}"`;
-    }
-
-    function friendlyUpstreamError(rawMsg, status) {
-      const msg = (rawMsg || '').toLowerCase();
-      if (status === 429 || msg.includes('rate limit') || msg.includes('too many requests')) {
-        return "We're getting a lot of traffic right now. Please wait about a minute and try again.";
-      }
-      if (status === 401 || status === 403) {
-        return 'Scene analysis is temporarily unavailable. Please try again shortly.';
-      }
-      return 'We had trouble analysing that scene. Please try again.';
-    }
-
-    const prompt = (images.length > 1 ? PROMPT_MULTI : PROMPT_SINGLE) + buildCorrectionSuffix(correction) + buildHintSuffix(hint);
-    const content = [
-      { type: 'text', text: prompt },
-      ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64:${img}`, detail: 'high' } }))
-    ];
-
-    console.log('[identify] About to call GitHub Models API');
-    const gptRes = await fetch('https://models.inference.ai.azure.com/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GITHUB_TOKEN}` },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content }],
-        max_tokens: 400,
-        temperature: 0.1
-      })
-    });
-    console.log(`[identify] Got response status: ${gptRes.status}`);
-    const data = await gptRes.json();
-    console.log('[identify] Parsed JSON response');
-
-    if (!gptRes.ok || !data.choices) {
-      console.error('[identify] GPT-4o error:', data.error?.message || gptRes.status);
-      return res.status(502).json({ error: friendlyUpstreamError(data.error?.message, gptRes.status) });
-    }
-
-    const text = data.choices[0].message.content;
-    console.log('[identify] response:', text.slice(0, 150));
-
-    const titleMatch = text.match(/TITLE:\s*([^\n]+)/i);
-    const yearMatch  = text.match(/YEAR:\s*(\d{4})/i);
-    const typeMatch  = text.match(/TYPE:\s*(MOVIE|SERIES|movie|series)/i);
-    const confMatch  = text.match(/CONFIDENCE:\s*(HIGH|MEDIUM|LOW)/i);
-    const reasonMatch = text.match(/REASON:\s*([^\n]+)/i);
-
-    const title = titleMatch?.[1]?.trim().replace(/^["']|["']$/g, '') || '';
-    const year  = yearMatch?.[1]?.trim() || '';
-    const type  = typeMatch?.[1]?.toUpperCase() === 'SERIES' ? 'SERIES' : 'MOVIE';
-    const conf  = confMatch?.[1]?.toUpperCase() || 'MEDIUM';
-    const reason = reasonMatch?.[1]?.trim() || '';
-
-    if (!title || title.toUpperCase() === 'UNKNOWN') {
-      console.log('[identify] UNKNOWN — low confidence frame');
-      return res.status(200).json({ title: 'UNKNOWN', year: 0, type: 'MOVIE' });
-    }
-
-    if (conf === 'LOW') {
-      console.log('[identify] LOW confidence — skipping frame');
-      return res.status(200).json({ title: 'UNKNOWN', year: 0, type: 'MOVIE' });
-    }
-
-    console.log(`[identify] ✅ "${title}" (${year}) [${type}] [${conf}]`);
-    res.json({ title, year: parseInt(year) || year, type, confidence: conf, reason });
-
-  } catch (err) {
-    console.error('[identify] exception:', err.message);
-    res.status(500).json({ error: 'We had trouble analysing that scene. Please try again.' });
-  }
+// Simple test endpoint
+app.get('/test', (req, res) => {
+  console.log('[test] endpoint hit');
+  res.json({ message: 'test works' });
 });
 
-// ── /api/tmdb ───────────────────────────────────────────────
-app.get('/api/tmdb', async (req, res) => {
-  try {
-    console.log('[api/tmdb] Request received');
-    const { path } = req.query;
-    const response = await fetch(`https://api.themoviedb.org/3${path}`, {
-      headers: { 'Authorization': `Bearer ${TMDB_TOKEN}`, 'accept': 'application/json' }
-    });
-    console.log('[api/tmdb] Got response from TMDB');
-    res.json(await response.json());
-  } catch (error) {
-    console.error('[api/tmdb] error:', error);
-    res.status(500).json({ error: 'TMDB proxy failed' });
-  }
+// Simple API endpoint to mirror your identify endpoint structure
+app.post('/api/identify', (req, res) => {
+  console.log('[api/identify] endpoint hit');
+  res.json({
+    title: 'Test Movie',
+    year: 2023,
+    type: 'MOVIE',
+    confidence: 'HIGH',
+    reason: 'This is a test response'
+  });
 });
 
-// ── /api/watchmode/search ───────────────────────────────────
-app.get('/api/watchmode/search', async (req, res) => {
-  try {
-    console.log('[api/watchmode/search] Request received');
-    const { imdb_id, title } = req.query;
-    const url = imdb_id
-      ? `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_KEY}&search_field=imdb_id&search_value=${imdb_id}`
-      : `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_KEY}&search_field=name&search_value=${encodeURIComponent(title)}`;
-    const resp = await fetch(url);
-    console.log('[api/watchmode/search] Got response from Watchmode');
-    res.json(await resp.json());
-  } catch (err) {
-    console.error('[api/watchmode/search] error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── /api/watchmode/sources/:id ──────────────────────────────
-app.get('/api/watchmode/sources/:id', async (req, res) => {
-  try {
-    console.log('[api/watchmode/sources/:id] Request received');
-    const url = `https://api.watchmode.com/v1/title/${req.params.id}/sources/?apiKey=${WATCHMODE_KEY}`;
-    const resp = await fetch(url);
-    console.log('[api/watchmode/sources/:id] Got response from Watchmode');
-    res.json(await resp.json());
-  } catch (err) {
-    console.error('[api/watchmode/sources/:id] error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── /api/watchmode (legacy) ─────────────────────────────────
-app.get('/api/watchmode', async (req, res) => {
-  try {
-    console.log('[api/watchmode] Request received');
-    const { query } = req.query;
-    const url = `https://api.watchmode.com/v1/search/?apiKey=${WATCHMODE_KEY}&search_field=title&search_value=${encodeURIComponent(query)}`;
-    const resp = await fetch(url);
-    console.log('[api/watchmode] Got response from Watchmode');
-    res.json(await resp.json());
-  } catch (err) {
-    console.error('[api/watchmode] error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// SPA fallback: for any request that didn't match a static file or an API route, serve index.html
-app.use((req, res) => {
-  console.log(`[fallback] Handling request: ${req.method} ${req.path}`);
-  // If it's an API route that wasn't handled above, return 404
-  if (req.path.startsWith('/api/')) {
-    console.log('[fallback] API 404');
-    return res.status(404).json({ error: 'API endpoint not found' });
-  }
-  // For all other routes, serve index.html (allows client-side routing)
-  console.log('[fallback] Serving index.html');
-  res.sendFile(path.join(projectRoot, 'index.html'));
-});
+console.log('Routes defined');
 
 const handler = serverless(app);
 export default handler;
