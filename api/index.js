@@ -1,8 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import serverless from 'serverless-http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 console.log('Module loaded, starting app initialization...');
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 // Request logging middleware
@@ -12,6 +17,18 @@ app.use((req, res, next) => {
 });
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+// Serve static files
+app.use(express.static(__dirname, { dotfiles: 'ignore', index: false }));
+
+// Serve index.html for any non-API routes (for client-side routing)
+app.get('/(.*)', (req, res) => {
+  // Don't interfere with API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
