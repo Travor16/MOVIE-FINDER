@@ -81,6 +81,7 @@ function friendlyUpstreamError(rawMsg, status) {
 // ── /api/identify ───────────────────────────────────────────
 app.post('/api/identify', async (req, res) => {
   try {
+    console.log('[identify] Request handler started');
     const { imageBuffer, frames, mimeType, correction, hint } = req.body;
     const images = (Array.isArray(frames) && frames.length) ? frames : (imageBuffer ? [imageBuffer] : []);
     if (!images.length) return res.status(400).json({ error: 'No image data provided' });
