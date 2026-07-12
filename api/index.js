@@ -8,6 +8,7 @@ console.log('Module loaded, starting app initialization...');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const projectRoot = path.join(__dirname, '..');
 
 const app = express();
 // Request logging middleware
@@ -17,91 +18,6 @@ app.use((req, res, next) => {
 });
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-
-// Serve static files
-app.use(express.static(__dirname, { dotfiles: 'ignore', index: false }));
-
-// Serve index.html for any non-API routes (for client-side routing)
-// This must come after all API routes
-app.use((req, res) => {
-  // If it's an API route that wasn't matched, return 404
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'API endpoint not found' });
-  }
-  // For all other routes, serve index.html (SPA fallback)
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
-const WATCHMODE_KEY = process.env.WATCHMODE_API_KEY;
-console.log('[env] Checking variables: GITHUB_TOKEN:', !!GITHUB_TOKEN, 'TMDB_TOKEN:', !!TMDB_TOKEN, 'WATCHMODE_KEY:', !!WATCHMODE_KEY);
-
-const PROMPT_SINGLE = `You are a movie and TV series identification expert. Look at this image carefully.
-
-Identify the exact movie OR TV series this scene is from.
-
-Look for: actor faces, costumes, props, setting, any on-screen text, subtitles, watermarks, logos, cinematography style.
-
-Be careful: recognizing an actor's face is not the same as knowing which specific film you're looking at — many actors appear together in more than one project. Only use HIGH confidence if you're sure of this exact scene/film, not just the actors in it. If you recognize the people but are unsure of the specific title, use MEDIUM confidence and say so in REASON.
-
-Reply in this EXACT format only:
-TITLE: [exact title]
-YEAR: [year]
-TYPE: [MOVIE or SERIES]
-CONFIDENCE: [HIGH or MEDIUM or LOW]
-REASON: [one to two sentences of visual evidence — explicitly name every actor's face you recognize, even if unsure of the exact title]
-
-If you cannot identify it:
-TITLE: UNKNOWN
-YEAR: UNKNOWN
-TYPE: UNKNOWN
-CONFIDENCE: LOW
-REASON: [what you see]`;
-
-const PROMPT_MULTI = `You are a movie and TV series identification expert. You are shown several frames captured at different moments from the SAME short video clip.
-
-Use all frames together as evidence — a face, prop, or logo that's clear in one frame can confirm a blurrier moment in another. Identify the exact movie OR TV series this scene is from.
-
-Look for: actor faces, costumes, props, setting, any on-screen text, subtitles, watermarks, logos, cinematography style. If frames look like different unrelated shots, focus on whichever frame gives the strongest, most specific evidence.
-
-Be careful: recognizing an actor's face is not the same as knowing which specific film you're looking at — many actors appear together in more than one project, so don't guess a title just because you recognize the cast. Only use HIGH confidence if you're sure of this exact scene/film. If you recognize the people but are unsure of the specific title, use MEDIUM confidence and say so in REASON, naming the actors you see so it can be checked.
-
-Reply in this EXACT format only:
-TITLE: [exact title]
-YEAR: [year]
-TYPE: [MOVIE or SERIES]
-CONFIDENCE: [HIGH or MEDIUM or LOW]
-REASON: [one to two sentences of visual evidence — explicitly name every actor's face you recognize, even if unsure of the exact title; mention which frame if relevant]
-
-If you cannot identify it from any frame:
-TITLE: UNKNOWN
-YEAR: UNKNOWN
-TYPE: UNKNOWN
-CONFIDENCE: LOW
-REASON: [what you see]`;
-
-function buildCorrectionSuffix(correction) {
-  if (!correction || !correction.rejectedTitle) return '';
-  return `\n\nIMPORTANT — SELF-CORRECTION NEEDED: Your previous answer was "${correction.rejectedTitle}", but that title's real cast is: ${correction.actualCast || 'unknown'}. That does not match the actor(s) you described seeing in the frame(s) (${correction.mentionedActors || 'unclear'}). Your previous guess was therefore WRONG for this scene — do not repeat it. Two actors can appear together in more than one film; think about which OTHER movie or TV series these specific actors/scene actually belong to. If you genuinely cannot determine the correct title, return UNKNOWN rather than repeating the same wrong guess.`;
-}
-
-function buildHintSuffix(hint) {
-  if (!hint || !String(hint).trim()) return '';
-  const clean = String(hint).trim().slice(0, 500);
-  return `\n\nVIEWER-PROVIDED DESCRIPTION (optional context, may be vague, partial, or slightly wrong — use it as a helpful clue alongside the visual evidence, not as a fact to accept uncritically): "${clean}"`;
-}
-
-function friendlyUpstreamError(rawMsg, status) {
-  const msg = (rawMsg || '').toLowerCase();
-  if (status === 429 || msg.includes('rate limit') || msg.includes('too many requests')) {
-    return "We're getting a lot of traffic right now. Please wait about a minute and try again.";
-  }
-  if (status === 401 || status === 403) {
-    return 'Scene analysis is temporarily unavailable. Please try again shortly.';
-  }
-  return 'We had trouble analysing that scene. Please try again.';
-}
 
 // ── /api/identify ───────────────────────────────────────────
 app.post('/api/identify', async (req, res) => {
@@ -117,7 +33,7 @@ app.post('/api/identify', async (req, res) => {
     const prompt = (images.length > 1 ? PROMPT_MULTI : PROMPT_SINGLE) + buildCorrectionSuffix(correction) + buildHintSuffix(hint);
     const content = [
       { type: 'text', text: prompt },
-      ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${img}`, detail: 'high' } }))
+      ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64:${img}`, detail: 'high' } }))
     ];
 
     console.log('[identify] About to call GitHub Models API');
@@ -223,6 +139,90 @@ app.get('/api/watchmode', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Serve static files from project root
+app.use(express.static(projectRoot, { dotfiles: 'ignore', index: false }));
+
+// Serve index.html for any non-API routes (for client-side routing)
+app.use((req, res) => {
+  // If it's an API route that wasn't matched, return 404
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  // For all other routes, serve index.html (SPA fallback)
+  res.sendFile(path.join(projectRoot, 'index.html'));
+});
+
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
+const WATCHMODE_KEY = process.env.WATCHMODE_API_KEY;
+console.log('[env] Checking variables: GITHUB_TOKEN:', !!GITHUB_TOKEN, 'TMDB_TOKEN:', !!TMDB_TOKEN, 'WATCHMODE_KEY:', !!WATCHMODE_KEY);
+
+const PROMPT_SINGLE = `You are a movie and TV series identification expert. Look at this image carefully.
+
+Identify the exact movie OR TV series this scene is from.
+
+Look for: actor faces, costumes, props, setting, any on-screen text, subtitles, watermarks, logos, cinematography style.
+
+Be careful: recognizing an actor's face is not the same as knowing which specific film you're looking at — many actors appear together in more than one project. Only use HIGH confidence if you're sure of this exact scene/film, not just the actors in it. If you recognize the people but are unsure of the specific title, use MEDIUM confidence and say so in REASON.
+
+Reply in this EXACT format only:
+TITLE: [exact title]
+YEAR: [year]
+TYPE: [MOVIE or SERIES]
+CONFIDENCE: [HIGH or MEDIUM or LOW]
+REASON: [one to two sentences of visual evidence — explicitly name every actor's face you recognize, even if unsure of the exact title]
+
+If you cannot identify it:
+TITLE: UNKNOWN
+YEAR: UNKNOWN
+TYPE: UNKNOWN
+CONFIDENCE: LOW
+REASON: [what you see]`;
+
+const PROMPT_MULTI = `You are a movie and TV series identification expert. You are shown several frames captured at different moments from the SAME short video clip.
+
+Use all frames together as evidence — a face, prop, or logo that's clear in one frame can confirm a blurrier moment in another. Identify the exact movie OR TV series this scene is from.
+
+Look for: actor faces, costumes, props, setting, any on-screen text, subtitles, watermarks, logos, cinematography style. If frames look like different unrelated shots, focus on whichever frame gives the strongest, most specific evidence.
+
+Be careful: recognizing an actor's face is not the same as knowing which specific film you're looking at — many actors appear together in more than one project, so don't guess a title just because you recognize the cast. Only use HIGH confidence if you're sure of this exact scene/film. If you recognize the people but are unsure of the specific title, use MEDIUM confidence and say so in REASON, naming the actors you see so it can be checked.
+
+Reply in this EXACT format only:
+TITLE: [exact title]
+YEAR: [year]
+TYPE: [MOVIE or SERIES]
+CONFIDENCE: [HIGH or MEDIUM or LOW]
+REASON: [one to two sentences of visual evidence — explicitly name every actor's face you recognize, even if unsure of the exact title; mention which frame if relevant]
+
+If you cannot identify it from any frame:
+TITLE: UNKNOWN
+YEAR: UNKNOWN
+TYPE: UNKNOWN
+CONFIDENCE: LOW
+REASON: [what you see]`;
+
+function buildCorrectionSuffix(correction) {
+  if (!correction || !correction.rejectedTitle) return '';
+  return `\n\nIMPORTANT — SELF-CORRECTION NEEDED: Your previous answer was "${correction.rejectedTitle}", but that title's real cast is: ${correction.actualCast || 'unknown'}. That does not match the actor(s) you described seeing in the frame(s) (${correction.mentionedActors || 'unclear'}). Your previous guess was therefore WRONG for this scene — do not repeat it. Two actors can appear together in more than one film; think about which OTHER movie or TV series these actual actors/scene actually belong to. If you genuinely cannot determine the correct title, return UNKNOWN rather than repeating the same wrong guess.`;
+}
+
+function buildHintSuffix(hint) {
+  if (!hint || !String(hint).trim()) return '';
+  const clean = String(hint).trim().slice(0, 500);
+  return `\n\nVIEWER-PROVIDED DESCRIPTION (optional context, may be vague, partial, or slightly wrong — use it as a helpful clue alongside the visual evidence, not as a fact to accept uncritically): "${clean}"`;
+}
+
+function friendlyUpstreamError(rawMsg, status) {
+  const msg = (rawMsg || '').toLowerCase();
+  if (status === 429 || msg.includes('rate limit') || msg.includes('too many requests')) {
+    return "We're getting a lot of traffic right now. Please wait about a minute and try again.";
+  }
+  if (status === 401 || status === 403) {
+    return 'Scene analysis is temporarily unavailable. Please try again shortly.';
+  }
+  return 'We had trouble analysing that scene. Please try again.';
+}
 
 const handler = serverless(app);
 export default handler;
