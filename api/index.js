@@ -116,7 +116,6 @@ app.post('/api/identify', async (req, res) => {
     const data = await gptRes.json();
     console.log('[identify] Parsed JSON response');
 
-    const data = await gptRes.json();
     if (!gptRes.ok || !data.choices) {
       console.error('[identify] GPT-4o error:', data.error?.message || gptRes.status);
       return res.status(502).json({ error: friendlyUpstreamError(data.error?.message, gptRes.status) });
