@@ -1,9 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import serverless from 'serverless-http';
+import path from 'path';
 import { fileURLToPath } from 'url';
 
 console.log('Module loaded, starting app initialization...');
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.dirname(__dirname); // one level up from api/
 
 const app = express();
 // Request logging middleware
@@ -13,6 +18,9 @@ app.use((req, res, next) => {
 });
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+// Serve static files from the project root (index.html, CSS, JS, images, etc.)
+app.use(express.static(projectRoot, { dotfiles: 'ignore' }));
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
@@ -204,6 +212,16 @@ app.get('/api/watchmode', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// SPA fallback: for any request that didn't match a static file or an API route, serve index.html
+app.use((req, res) => {
+  // If it's an API route that wasn't handled above, return 404
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  // For all other routes, serve index.html (allows client-side routing)
+  res.sendFile(path.join(projectRoot, 'index.html'));
 });
 
 const handler = serverless(app);
