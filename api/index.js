@@ -22,11 +22,13 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.static(__dirname, { dotfiles: 'ignore', index: false }));
 
 // Serve index.html for any non-API routes (for client-side routing)
-app.get('/(.*)', (req, res) => {
-  // Don't interfere with API routes
+// This must come after all API routes
+app.use((req, res) => {
+  // If it's an API route that wasn't matched, return 404
   if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'Not found' });
+    return res.status(404).json({ error: 'API endpoint not found' });
   }
+  // For all other routes, serve index.html (SPA fallback)
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
