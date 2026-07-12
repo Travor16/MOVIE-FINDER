@@ -96,6 +96,7 @@ app.post('/api/identify', async (req, res) => {
       ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${img}`, detail: 'high' } }))
     ];
 
+    console.log('[identify] About to call GitHub Models API');
     const gptRes = await fetch('https://models.inference.ai.azure.com/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GITHUB_TOKEN}` },
@@ -106,6 +107,9 @@ app.post('/api/identify', async (req, res) => {
         temperature: 0.1
       })
     });
+    console.log(`[identify] Got response status: ${gptRes.status}`);
+    const data = await gptRes.json();
+    console.log('[identify] Parsed JSON response');
 
     const data = await gptRes.json();
     if (!gptRes.ok || !data.choices) {
