@@ -11,6 +11,7 @@ app.use(express.json({ limit: '50mb' }));
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const TMDB_TOKEN = process.env.TMDB_READ_TOKEN;
 const WATCHMODE_KEY = process.env.WATCHMODE_API_KEY;
+console.log('[env] Checking variables: GITHUB_TOKEN:', !!GITHUB_TOKEN, 'TMDB_TOKEN:', !!TMDB_TOKEN, 'WATCHMODE_KEY:', !!WATCHMODE_KEY);
 
 const PROMPT_SINGLE = `You are a movie and TV series identification expert. Look at this image carefully.
 
