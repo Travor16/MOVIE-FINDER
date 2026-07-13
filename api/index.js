@@ -30,7 +30,7 @@ app.post('/api/identify', (req, res) => {
     type: 'MOVIE',
     confidence: 'HIGH',
     reason: 'This is a test response'
-  );
+  });
 });
 
 // Catch-all for unmatched routes - MUST come after all specific routes
