@@ -1,9 +1,9 @@
-// Using callback style instead of async/await
+// Minimal response - just send text without status
 console.log('[MODULE] Module execution started');
 
 module.exports = (req, res) => {
   console.log('[HANDLER] Request received:', req.method, req.url);
-  res.status(200).send('Hello from callback handler!');
+  res.send('OK');
   console.log('[HANDLER] Response sent');
 };
 
