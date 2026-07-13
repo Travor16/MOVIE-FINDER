@@ -230,7 +230,13 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Movie Finder running at http://localhost:${PORT}`);
-  console.log(`GPT-4o: ${GITHUB_TOKEN ? '✅' : '❌ MISSING'}`);
-});
+// Export the app for serverless functions
+export { app };
+
+// Only listen if this file is run directly (not imported)
+if (import.meta.url === `file://${process.argv[1]}`) {
+  app.listen(PORT, () => {
+    console.log(`Movie Finder running at http://localhost:${PORT}`);
+    console.log(`GPT-4o: ${GITHUB_TOKEN ? '✅' : '❌ MISSING'}`);
+  });
+}
