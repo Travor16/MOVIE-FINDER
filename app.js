@@ -812,8 +812,8 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
     slides[cur].classList.add('active'); dots.children[cur].classList.add('active');
     clearInterval(timer); timer = setInterval(() => go(cur + 1), 5000);
   }
-  prev.onclick = () => go(cur - 1);
-  next.onclick = () => go(cur + 1);
+  if (prev) prev.onclick = () => go(cur - 1);
+  if (next) next.onclick = () => go(cur + 1);
   timer = setInterval(() => go(cur + 1), 5000);
 })();
 
