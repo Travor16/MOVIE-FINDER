@@ -1,7 +1,9 @@
+import { createServer } from 'http';
+
 // Handler with error catching to see what's going wrong
 console.log('[MODULE] Module execution started');
 
-module.exports = (req, res) => {
+export default (req, res) => {
   console.log('[HANDLER] Request received:', req.method, req.url);
   try {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
