@@ -1,0 +1,4 @@
+# Ads.txt file for Movie Finder UG
+# Replace with your own publisher ID when you get approved for AdSense
+# Example format:
+# google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c475ec0942fa0
