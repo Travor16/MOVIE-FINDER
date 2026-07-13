@@ -38,6 +38,7 @@ app.post('/api/identify', (req, res) => {
 app.get('/', (req, res) => {
   console.log('[root] endpoint hit');
   res.send('Hello from root!');
+  console.log('[root] response sent');
 });
 
 // Catch-all for unmatched routes - MUST come after all specific routes
