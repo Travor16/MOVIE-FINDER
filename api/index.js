@@ -1,17 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import serverless from 'serverless-http';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 console.log('Module loaded, starting app initialization...');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRoot = path.dirname(__dirname); // one level up from api/
-
 const app = express();
-// Request logging middleware
+// Simple middleware to test
 app.use((req, res, next) => {
   console.log(`[middleware] ${req.method} ${req.path}`);
   next();
@@ -21,17 +15,13 @@ app.use(express.json({ limit: '50mb' }));
 
 console.log('Middleware setup complete');
 
-// Serve static files from project root (index.html, CSS, JS, images, etc.)
-app.use(express.static(projectRoot, { dotfiles: 'ignore' }));
-console.log('[middleware] Static file serving configured from:', projectRoot);
-
-// Simple test endpoint
+// Simple test endpoint - this should DEFINITELY work
 app.get('/test', (req, res) => {
   console.log('[test] endpoint hit');
-  res.json({ message: 'test works' });
+  res.json({ message: 'test works', timestamp: Date.now() });
 });
 
-// Simple API endpoint to mirror your identify endpoint structure
+// Simple API endpoint
 app.post('/api/identify', (req, res) => {
   console.log('[api/identify] endpoint hit');
   res.json({
@@ -39,22 +29,21 @@ app.post('/api/identify', (req, res) => {
     year: 2023,
     type: 'MOVIE',
     confidence: 'HIGH',
-    reason: 'This is a test response'
+    reason: 'This is a test response',
+    timestamp: Date.now()
   });
 });
 
-console.log('Routes defined');
+// Root path handler - let's handle this explicitly to test
+app.get('/', (req, res) => {
+  console.log('[root] endpoint hit');
+  res.send('Hello from root!');
+});
 
-// SPA fallback: for any request that didn't match a static file or an API route, serve index.html
+// Catch-all for unmatched routes - MUST come after all specific routes
 app.use((req, res) => {
-  // If it's an API route that wasn't handled above, return 404
-  if (req.path.startsWith('/api/')) {
-    console.log(`[unmatched-API] ${req.method} ${req.path} - sending 404`);
-    return res.status(404).json({ error: 'API endpoint not found' });
-  }
-  // For all other routes, serve index.html (allows client-side routing)
-  console.log(`[spa-fallback] ${req.method} ${req.path} - serving index.html`);
-  res.sendFile(path.join(projectRoot, 'index.html'));
+  console.log(`[unmatched] ${req.method} ${req.path} - sending 404`);
+  res.status(404).json({ error: 'Not found' });
 });
 
 console.log('Routes defined');
