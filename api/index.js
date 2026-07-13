@@ -1,9 +1,9 @@
-// Super simple handler - no try/catch, just send response
+// Using callback style instead of async/await
 console.log('[MODULE] Module execution started');
 
-module.exports = async (req, res) => {
+module.exports = (req, res) => {
   console.log('[HANDLER] Request received:', req.method, req.url);
-  res.status(200).send('Hello from basic handler!');
+  res.status(200).send('Hello from callback handler!');
   console.log('[HANDLER] Response sent');
 };
 
