@@ -113,10 +113,10 @@ function extractMentionedNames(text) {
 function castOverlaps(mentionedNames, castList) {
   if (!mentionedNames.length || !castList || !castList.length) return true; // nothing to check against
   const castSurnames = castList.map(n => n.trim().split(/\s+/).pop().toLowerCase());
-  return mentionedSome.name => {
+  return mentionedNames.some(name => {
     const surname = name.trim().split(/\s+/).pop().toLowerCase();
     return castSurnames.includes(surname);
-  };
+  });
 }
 
 /* Convert file to compressed base64 JPEG */
@@ -832,7 +832,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
     entries.forEach(e => {
       if (e.isIntersecting) {
         lk.forEach(l => l.classList.remove('active'));
-        const a = nl.querySelector('a[href=\"#' + e.target.id + '\"]');
+        const a = nl.querySelector('a[href="#' + e.target.id + '"]');
         if (a) a.classList.add('active');
       }
     });
@@ -843,68 +843,9 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 /* Contact form */
 document.getElementById('contactForm').addEventListener('submit', function(e) {
   e.preventDefault();
-  let valid = true;
-  // name
-  const nameInput = this.elements['name'];
-  const nameError = document.getElementById('name-error');
-  if (!nameInput.value.trim()) {
-    nameError.textContent = 'Please enter your name';
-    nameInput.classList.add('error');
-    valid = false;
-  } else {
-    nameError.textContent = '';
-    nameInput.classList.remove('error');
-  }
-  // email
-  const emailInput = this.elements['email'];
-  const emailError = document.getElementById('email-error');
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailPattern.test(emailInput.value.trim())) {
-    emailError.textContent = 'Please enter a valid email';
-    emailInput.classList.add('error');
-    valid = false;
-  } else {
-    error.textContent = '';
-    emailInput.classList.remove('error');
-  }
-  // message
-  const messageInput = this.elements['message'];
-  const messageError = document.getElementById('message-error');
-  if (!messageInput.value.trim()) {
-    messageError.textContent = 'Please enter a message';
-    messageInput.classList.add('error');
-    valid = false;
-  } else {
-    messageError.textContent = '';
-    messageInput.classList.remove('error');
-  }
-  if (valid) {
-    document.getElementById('formSuccess').classList.remove('hidden');
-    this.reset();
-    setTimeout(() => document.getElementById('formSuccess').classList.add('hidden'), 5000);
-  }
-});
-
-// Live validation on input
-document.getElementById('contactForm').addEventListener('input', function(e) {
-  const target = e.target;
-  if (target.name === 'name') {
-    if (target.value.trim()) {
-      document.getElementById('name-error').textContent = '';
-      target.classList.remove('error');
-    }
-  } else if (target.name === 'email') {
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (emailPattern.test(target.value.trim())) {
-      document.getElementById('email-error').textContent = '';
-      target.classList.remove('error');
-    }
-  } else if (target.name === 'message') {
-    if (target.value.trim()) {
-      document.getElementById('message-error').textContent = '';
-      target.classList.remove('error');
-    }
-  }
+  document.getElementById('formSuccess').classList.remove('hidden');
+  this.reset();
+  setTimeout(() => document.getElementById('formSuccess').classList.add('hidden'), 5000);
 });
 
 /* Scroll reveal */
@@ -921,18 +862,3 @@ setInterval(() => {
     el.textContent = ['.', '..', '...'][el._i];
   });
 }, 500);
-
-/* Tooltip show-once */
-document.addEventListener('DOMContentLoaded', function() {
-  const tooltipIcon = document.querySelector('.tooltip-icon');
-  if (!tooltipIcon) return;
-  const shown = localStorage.getItem('tooltipShown');
-  if (!shown) {
-    tooltipIcon.classList.add('show');
-    // hide after 5 seconds
-    setTimeout(() => {
-      tooltipIcon.classList.remove('show');
-    }, 5000);
-    localStorage.setItem('tooltipShown', 'true');
-  }
-});
