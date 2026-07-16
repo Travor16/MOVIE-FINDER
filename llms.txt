@@ -1,0 +1,13 @@
+# Movie Finder UG
+
+Movie Finder UG is a web platform that uses AI to identify movies and TV shows from screenshots or video clips. Users can upload a scene or search by title to get instant results, including streaming links and details.
+
+## Important Pages
+- [Home](/): Movie finder tool and hero slider
+- [About](/about.html): Information about Movie Finder UG, vision, and how it works
+- [Blog](/blog.html): Movie discovery tips, tutorials, and industry news
+- [Privacy Policy](/privacy.html): Data handling and privacy practices
+- [Terms of Service](/terms.html): Usage terms and legal information
+
+## Purpose
+This file helps AI assistants understand the site structure and content for better assistance.
